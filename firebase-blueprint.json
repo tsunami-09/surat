@@ -108,6 +108,35 @@
       },
       "required": ["grantedByUid", "createdAt"]
     },
+    "RevokedUser": {
+      "title": "RevokedUser",
+      "description": "Deleted/revoked staff UID blocked from re-registering.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "revokedByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "displayName", "revokedByUid", "createdAt"]
+    },
     "SystemSettings": {
       "title": "SystemSettings",
       "description": "UPT Pelatihan Pertanian outgoing letter numbering format configuration.",
@@ -353,6 +382,18 @@
           "minLength": 2,
           "maxLength": 120
         },
+        "driveFileId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "driveFileName": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "driveWebViewLink": {
+          "type": "string",
+          "maxLength": 500
+        },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
@@ -393,6 +434,10 @@
     "/admins/{uid}": {
       "schema": { "$ref": "#/entities/AdminGrant" },
       "description": "Explicit admin privilege grant documents."
+    },
+    "/revoked_users/{uid}": {
+      "schema": { "$ref": "#/entities/RevokedUser" },
+      "description": "Revoked staff accounts blocked from accessing the system."
     },
     "/system_settings/{settingId}": {
       "schema": { "$ref": "#/entities/SystemSettings" },

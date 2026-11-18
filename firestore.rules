@@ -42,6 +42,10 @@ service cloud.firestore {
       );
     }
 
+    function isNotRevoked() {
+      return !exists(/databases/$(database)/documents/revoked_users/$(request.auth.uid));
+    }
+
     // --- Validation Blueprints ---
     function isValidStaffProfile(data) {
       return data.keys().hasAll([
@@ -81,6 +85,15 @@ service cloud.firestore {
       return data.keys().hasAll(['grantedByUid', 'createdAt']) &&
         data.keys().hasOnly(['grantedByUid', 'createdAt']) &&
         isValidId(data.grantedByUid) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidRevokedUser(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'revokedByUid', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'displayName', 'revokedByUid', 'createdAt']) &&
+        isValidId(data.uid) &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+        isValidId(data.revokedByUid) &&
         data.createdAt is timestamp;
     }
 
@@ -168,7 +181,9 @@ service cloud.firestore {
           'year', 'month', 'letterDate', 'sequenceNumber', 'subNumber', 'sortKey',
           'classificationCode', 'unitCode', 'fullNumber', 'category', 'subject',
           'recipient', 'picName', 'notes', 'status', 'cancelReason',
-          'createdByUid', 'createdByName', 'createdByDivision', 'createdAt', 'updatedAt'
+          'createdByUid', 'createdByName', 'createdByDivision',
+          'driveFileId', 'driveFileName', 'driveWebViewLink',
+          'createdAt', 'updatedAt'
         ]) &&
         data.year is int && data.year >= 2000 && data.year <= 2100 &&
         data.month is int && data.month >= 1 && data.month <= 12 &&
@@ -195,6 +210,15 @@ service cloud.firestore {
         isValidId(data.createdByUid) &&
         data.createdByName is string && data.createdByName.size() >= 2 && data.createdByName.size() <= 120 &&
         data.createdByDivision is string && data.createdByDivision.size() >= 2 && data.createdByDivision.size() <= 120 &&
+        (!('driveFileId' in data) || (data.driveFileId is string && data.driveFileId.size() <= 128)) &&
+        (!('driveFileName' in data) || (data.driveFileName is string && data.driveFileName.size() <= 240)) &&
+        (!('driveWebViewLink' in data) || (
+          data.driveWebViewLink is string &&
+          data.driveWebViewLink.size() <= 500 &&
+          (data.driveWebViewLink == '' ||
+            data.driveWebViewLink.matches('^https://drive\\.google\\.com/.*') ||
+            data.driveWebViewLink.matches('^https://docs\\.google\\.com/.*'))
+        )) &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
     }
@@ -210,13 +234,13 @@ service cloud.firestore {
     match /staff_profiles/{uid} {
       allow get: if isVerifiedUser() && isValidId(uid) && (isOwner(uid) || isAdmin());
       allow list: if false;
-      allow create: if isVerifiedUser() && isValidId(uid) && isOwner(uid) &&
+      allow create: if isVerifiedUser() && isNotRevoked() && isValidId(uid) && isOwner(uid) &&
         isValidStaffProfile(incoming()) &&
         incoming().uid == request.auth.uid &&
         (incoming().role == 'staff' || (isBootstrappedAdmin() && incoming().role == 'admin')) &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time;
-      allow update: if isVerifiedUser() && isValidId(uid) &&
+      allow update: if isVerifiedUser() && isNotRevoked() && isValidId(uid) &&
         isValidStaffProfile(incoming()) &&
         incoming().uid == existing().uid &&
         incoming().email == existing().email &&
@@ -228,20 +252,20 @@ service cloud.firestore {
           (isAdmin() &&
             incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'nip', 'division', 'jabatan', 'role', 'updatedAt']))
         );
-      allow delete: if false;
+      allow delete: if isVerifiedUser() && isValidId(uid) && isAdmin() && uid != request.auth.uid;
     }
 
     // Non-PII staff directory for verified UPT staff
     match /staff_directory/{uid} {
       allow get: if isVerifiedUser() && isValidId(uid);
       allow list: if isVerifiedUser() && resource.data.uid > '';
-      allow create: if isVerifiedUser() && isValidId(uid) && isOwner(uid) &&
+      allow create: if isVerifiedUser() && isNotRevoked() && isValidId(uid) && isOwner(uid) &&
         isValidStaffDirectory(incoming()) &&
         incoming().uid == request.auth.uid &&
         (incoming().role == 'staff' || (isBootstrappedAdmin() && incoming().role == 'admin')) &&
         incoming().active == true &&
         incoming().updatedAt == request.time;
-      allow update: if isVerifiedUser() && isValidId(uid) &&
+      allow update: if isVerifiedUser() && isNotRevoked() && isValidId(uid) &&
         isValidStaffDirectory(incoming()) &&
         incoming().uid == existing().uid &&
         incoming().updatedAt == request.time && (
@@ -252,7 +276,7 @@ service cloud.firestore {
           (isAdmin() &&
             incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'division', 'jabatan', 'role', 'active', 'updatedAt']))
         );
-      allow delete: if false;
+      allow delete: if isVerifiedUser() && isValidId(uid) && isAdmin() && uid != request.auth.uid;
     }
 
     // Explicit admin registry
@@ -262,6 +286,19 @@ service cloud.firestore {
       allow create: if isVerifiedUser() && isValidId(uid) && isAdmin() &&
         isValidAdminGrant(incoming()) &&
         incoming().grantedByUid == request.auth.uid &&
+        incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(uid) && isAdmin() && uid != request.auth.uid;
+    }
+
+    // Revoked / deleted user accounts blocked from accessing the app
+    match /revoked_users/{uid} {
+      allow get: if isVerifiedUser() && isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isVerifiedUser() && resource.data.revokedByUid == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(uid) && isAdmin() && uid != request.auth.uid &&
+        isValidRevokedUser(incoming()) &&
+        incoming().uid == uid &&
+        incoming().revokedByUid == request.auth.uid &&
         incoming().createdAt == request.time;
       allow update: if false;
       allow delete: if isVerifiedUser() && isValidId(uid) && isAdmin() && uid != request.auth.uid;
@@ -325,12 +362,12 @@ service cloud.firestore {
     match /daily_counters/{dateId} {
       allow get: if isVerifiedUser() && isValidId(dateId);
       allow list: if isVerifiedUser() && resource.data.year >= 2000;
-      allow create: if isVerifiedUser() && isValidId(dateId) &&
+      allow create: if isVerifiedUser() && isNotRevoked() && isValidId(dateId) &&
         isValidDailyCounter(incoming()) &&
         dateId == incoming().date &&
         incoming().usedCount == 1 &&
         incoming().updatedAt == request.time;
-      allow update: if isVerifiedUser() && isValidId(dateId) &&
+      allow update: if isVerifiedUser() && isNotRevoked() && isValidId(dateId) &&
         isValidDailyCounter(incoming()) &&
         incoming().date == existing().date &&
         incoming().year == existing().year &&
@@ -368,9 +405,9 @@ service cloud.firestore {
 
     // Outgoing letters ledger
     match /outgoing_letters/{letterId} {
-      allow get: if isVerifiedUser() && isValidId(letterId);
+      allow get: if isVerifiedUser() && isNotRevoked() && isValidId(letterId);
       allow list: if isVerifiedUser() && resource.data.year >= 2000;
-      allow create: if isVerifiedUser() && isValidId(letterId) &&
+      allow create: if isVerifiedUser() && isNotRevoked() && isValidId(letterId) &&
         isValidOutgoingLetter(incoming()) &&
         incoming().createdByUid == request.auth.uid &&
         incoming().status == 'terbit' &&
@@ -381,7 +418,7 @@ service cloud.firestore {
         existsAfter(/databases/$(database)/documents/daily_counters/$(incoming().letterDate)) &&
         incoming().sequenceNumber >= getAfter(/databases/$(database)/documents/daily_counters/$(incoming().letterDate)).data.startSeq &&
         incoming().sequenceNumber <= getAfter(/databases/$(database)/documents/daily_counters/$(incoming().letterDate)).data.endSeq;
-      allow update: if isVerifiedUser() && isValidId(letterId) &&
+      allow update: if isVerifiedUser() && isNotRevoked() && isValidId(letterId) &&
         isValidOutgoingLetter(incoming()) &&
         incoming().createdByUid == existing().createdByUid &&
         incoming().createdByName == existing().createdByName &&
@@ -404,7 +441,14 @@ service cloud.firestore {
             incoming().diff(existing()).affectedKeys().hasOnly([
               'category', 'subject', 'recipient', 'picName', 'notes', 'updatedAt'
             ])) ||
-          // Action 2: Void / Batalkan an active letter (owner or admin)
+          // Action 2: Attach or update Google Drive file reference (owner or admin)
+          ((isAdmin() || existing().createdByUid == request.auth.uid) &&
+            existing().status == 'terbit' &&
+            incoming().status == 'terbit' &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'driveFileId', 'driveFileName', 'driveWebViewLink', 'updatedAt'
+            ])) ||
+          // Action 3: Void / Batalkan an active letter (owner or admin)
           ((isAdmin() || existing().createdByUid == request.auth.uid) &&
             existing().status == 'terbit' &&
             incoming().status == 'batal' &&
@@ -412,10 +456,11 @@ service cloud.firestore {
             incoming().diff(existing()).affectedKeys().hasOnly([
               'status', 'cancelReason', 'updatedAt'
             ])) ||
-          // Action 3: Admin correction override
+          // Action 4: Admin correction override
           (isAdmin() &&
             incoming().diff(existing()).affectedKeys().hasOnly([
-              'category', 'subject', 'recipient', 'picName', 'notes', 'status', 'cancelReason', 'updatedAt'
+              'category', 'subject', 'recipient', 'picName', 'notes', 'status', 'cancelReason',
+              'driveFileId', 'driveFileName', 'driveWebViewLink', 'updatedAt'
             ]))
         );
       allow delete: if false;

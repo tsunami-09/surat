@@ -4,20 +4,34 @@ import {
   CalendarDays,
   FilePlus2,
   FileSpreadsheet,
+  HardDrive,
   LogOut,
   Menu,
   SlidersHorizontal,
   Users,
   X,
 } from 'lucide-react';
-import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
-import { auth, BOOTSTRAPPED_ADMIN_EMAIL, googleProvider } from './lib/firebase';
+import { onAuthStateChanged, type User } from 'firebase/auth';
+import {
+  auth,
+  BOOTSTRAPPED_ADMIN_EMAIL,
+  connectGoogleDrive,
+  getDriveAccessToken,
+  setDriveAccessToken,
+  signInWithGoogleWorkspace,
+  signOutWorkspace,
+} from './lib/firebase';
 import { BUILTIN_CLASSIFICATIONS, DEFAULT_SYSTEM_SETTINGS } from './lib/numbering';
 import {
+  attachDriveFileToLetter,
+  checkIsUserRevoked,
+  clearDriveFileFromLetter,
+  deleteStaffAccount,
   fetchUserProfileAndAdminStatus,
   issueOutgoingLetter,
   removeCalendarHoliday,
   removeClassificationCode,
+  restoreRevokedAccount,
   saveCalendarHoliday,
   saveClassificationCode,
   saveOwnStaffProfile,
@@ -26,8 +40,10 @@ import {
   subscribeClassifications,
   subscribeDailyCounters,
   subscribeOutgoingLetters,
+  subscribeRevokedUsers,
   subscribeStaffDirectory,
   subscribeSystemSettings,
+  syncBootstrappedAdminRole,
   updateOutgoingLetterDetails,
   updateStaffMemberRoleAndStatus,
   voidOutgoingLetter,
@@ -37,11 +53,13 @@ import type {
   ClassificationCode,
   DailyCounter,
   OutgoingLetter,
+  RevokedUser,
   StaffDirectoryEntry,
   StaffProfile,
   SystemSettings,
 } from './types/letter';
 import { CalendarAllocationView } from './components/CalendarAllocationView';
+import { DriveStorageView } from './components/DriveStorageView';
 import { IssueLetterModal } from './components/IssueLetterModal';
 import { LedgerView } from './components/LedgerView';
 import { LetterDetailDrawer } from './components/LetterDetailDrawer';
@@ -51,11 +69,12 @@ import { SettingsView } from './components/SettingsView';
 import { StaffView } from './components/StaffView';
 import { StatsView } from './components/StatsView';
 
-type ActiveTab = 'ledger' | 'calendar' | 'stats' | 'settings' | 'staff';
+type ActiveTab = 'ledger' | 'calendar' | 'drive' | 'stats' | 'settings' | 'staff';
 
 const NAV_ITEMS: { id: ActiveTab; label: string; icon: typeof FileSpreadsheet }[] = [
   { id: 'ledger', label: 'Buku Agenda Surat', icon: FileSpreadsheet },
   { id: 'calendar', label: 'Kalender & Alokasi', icon: CalendarDays },
+  { id: 'drive', label: 'Penyimpanan Drive', icon: HardDrive },
   { id: 'stats', label: 'Statistik & Rekap', icon: BarChart3 },
   { id: 'settings', label: 'Klasifikasi & Format', icon: SlidersHorizontal },
   { id: 'staff', label: 'Daftar Staf', icon: Users },
@@ -65,10 +84,12 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [driveToken, setDriveToken] = useState<string | null>(() => getDriveAccessToken());
 
   const [profile, setProfile] = useState<StaffProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [isAdminGrant, setIsAdminGrant] = useState(false);
+  const [isRevoked, setIsRevoked] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('ledger');
@@ -84,24 +105,61 @@ export default function App() {
   const [remoteSettings, setRemoteSettings] = useState<SystemSettings | null>(null);
   const [customClassifications, setCustomClassifications] = useState<ClassificationCode[]>([]);
   const [staffList, setStaffList] = useState<StaffDirectoryEntry[]>([]);
+  const [revokedUsers, setRevokedUsers] = useState<RevokedUser[]>([]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (nextUser) => {
       setUser(nextUser);
       setAuthError(null);
       if (!nextUser) {
+        setDriveAccessToken(null);
+        setDriveToken(null);
         setProfile(null);
         setIsAdminGrant(false);
+        setIsRevoked(false);
+        setRevokedUsers([]);
+        setAuthReady(true);
+        return;
+      }
+
+      setDriveToken(getDriveAccessToken());
+
+      if (!nextUser.emailVerified) {
+        setProfile(null);
+        setIsAdminGrant(false);
+        setIsRevoked(false);
         setAuthReady(true);
         return;
       }
 
       setProfileLoading(true);
       try {
+        const revoked = await checkIsUserRevoked(nextUser.uid);
+        if (revoked) {
+          setIsRevoked(true);
+          setProfile(null);
+          setIsAdminGrant(false);
+          return;
+        }
+
+        setIsRevoked(false);
         const { profile: loadedProfile, isAdminGrant: adminFlag } =
           await fetchUserProfileAndAdminStatus(nextUser.uid);
-        setProfile(loadedProfile);
-        setIsAdminGrant(adminFlag);
+
+        const isBootstrapped =
+          (nextUser.email ?? '').toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase();
+
+        if (isBootstrapped) {
+          const synced = await syncBootstrappedAdminRole(
+            nextUser.uid,
+            nextUser.email ?? '',
+          );
+          setProfile(synced ?? loadedProfile);
+          setIsAdminGrant(true);
+        } else {
+          setProfile(loadedProfile);
+          setIsAdminGrant(adminFlag);
+        }
       } catch (err) {
         setAuthError(
           err instanceof Error ? err.message : 'Gagal memuat profil pengguna.',
@@ -115,7 +173,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!authReady || !user || !user.emailVerified) {
+    if (!authReady || !user || !user.emailVerified || isRevoked) {
       return;
     }
 
@@ -138,7 +196,7 @@ export default function App() {
       unsubClassifications();
       unsubStaff();
     };
-  }, [authReady, user]);
+  }, [authReady, user, isRevoked]);
 
   const settings = remoteSettings ?? DEFAULT_SYSTEM_SETTINGS;
 
@@ -154,11 +212,19 @@ export default function App() {
   }, [customClassifications]);
 
   const isAdmin = useMemo(() => {
-    if (!user) return false;
+    if (!user || isRevoked) return false;
     const isBootstrapped =
       (user.email ?? '').toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase();
     return isBootstrapped || isAdminGrant || profile?.role === 'admin';
-  }, [user, isAdminGrant, profile]);
+  }, [user, isRevoked, isAdminGrant, profile]);
+
+  useEffect(() => {
+    if (!authReady || !user || !user.emailVerified || isRevoked || !isAdmin) {
+      setRevokedUsers([]);
+      return;
+    }
+    return subscribeRevokedUsers(user.uid, setRevokedUsers);
+  }, [authReady, user, isRevoked, isAdmin]);
 
   const selectedLetter = useMemo(
     () => letters.find((l) => l.id === selectedLetterId) ?? null,
@@ -168,7 +234,10 @@ export default function App() {
   const handleSignIn = async () => {
     setAuthError(null);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const { accessToken } = await signInWithGoogleWorkspace();
+      if (accessToken) {
+        setDriveToken(accessToken);
+      }
     } catch (err) {
       setAuthError(
         err instanceof Error
@@ -178,8 +247,20 @@ export default function App() {
     }
   };
 
+  const handleConnectDrive = async (): Promise<string> => {
+    const token = await connectGoogleDrive();
+    setDriveToken(token);
+    return token;
+  };
+
+  const handleDriveTokenExpired = () => {
+    setDriveAccessToken(null);
+    setDriveToken(null);
+  };
+
   const handleSignOut = async () => {
-    await signOut(auth);
+    setDriveToken(null);
+    await signOutWorkspace();
   };
 
   const handleSaveProfile = async (data: {
@@ -233,6 +314,28 @@ export default function App() {
           </h1>
           <p className="text-sm text-slate-600 leading-relaxed">
             Sistem penomoran surat mewajibkan akun dengan email terverifikasi demi keamanan arsip dinas. Silakan gunakan akun Google terverifikasi.
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleSignOut()}
+            className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg cursor-pointer"
+          >
+            Keluar & Ganti Akun
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isRevoked) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white border border-slate-200 rounded-xl p-8 space-y-4">
+          <h1 className="text-lg font-semibold text-slate-900">
+            Akses Akun Dinonaktifkan
+          </h1>
+          <p className="text-sm text-slate-600 leading-relaxed">
+            Akun Anda ({user.email}) telah dihapus atau dicabut aksesnya oleh Koordinator UPT Pelatihan Pertanian. Hubungi Koordinator apabila Anda memerlukan pemulihan akses.
           </p>
           <button
             type="button"
@@ -417,6 +520,18 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'drive' && (
+            <DriveStorageView
+              userEmail={user.email ?? ''}
+              driveToken={driveToken}
+              letters={letters}
+              onConnectDrive={handleConnectDrive}
+              onTokenExpired={handleDriveTokenExpired}
+              onAttachToLetter={attachDriveFileToLetter}
+              onClearLetterAttachment={clearDriveFileFromLetter}
+            />
+          )}
+
           {activeTab === 'stats' && (
             <StatsView letters={letters} classifications={classifications} />
           )}
@@ -436,6 +551,7 @@ export default function App() {
           {activeTab === 'staff' && (
             <StaffView
               staffList={staffList}
+              revokedUsers={revokedUsers}
               currentProfile={profile}
               isAdmin={isAdmin}
               onEditOwnProfile={() => setShowEditProfile(true)}
@@ -447,6 +563,14 @@ export default function App() {
                   actorUid: user.uid,
                 })
               }
+              onDeleteUser={({ targetUid, displayName }) =>
+                deleteStaffAccount({
+                  targetUid,
+                  displayName,
+                  actorUid: user.uid,
+                })
+              }
+              onRestoreUser={restoreRevokedAccount}
             />
           )}
         </main>
@@ -460,6 +584,10 @@ export default function App() {
           dailyCounters={dailyCounters}
           customHolidays={customHolidays}
           initialDate={preselectedIssueDate}
+          driveToken={driveToken}
+          onConnectDrive={handleConnectDrive}
+          onTokenExpired={handleDriveTokenExpired}
+          onAttachDriveFile={attachDriveFileToLetter}
           onIssue={(payload) =>
             issueOutgoingLetter({
               ...payload,
@@ -481,6 +609,11 @@ export default function App() {
           profile={profile}
           isAdmin={isAdmin}
           padDigits={settings.padDigits}
+          driveToken={driveToken}
+          onConnectDrive={handleConnectDrive}
+          onTokenExpired={handleDriveTokenExpired}
+          onAttachDriveFile={attachDriveFileToLetter}
+          onClearDriveFile={clearDriveFileFromLetter}
           onUpdate={updateOutgoingLetterDetails}
           onVoid={voidOutgoingLetter}
           onClose={() => setSelectedLetterId(null)}

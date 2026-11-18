@@ -29,6 +29,7 @@ import {
   type HolidayKind,
   type LetterCategory,
   type OutgoingLetter,
+  type RevokedUser,
   type StaffDirectoryEntry,
   type StaffProfile,
   type StaffRole,
@@ -55,6 +56,64 @@ export async function fetchUserProfileAndAdminStatus(uid: string): Promise<{
   }
 }
 
+export async function syncBootstrappedAdminRole(
+  uid: string,
+  email: string,
+): Promise<StaffProfile | null> {
+  if (email.toLowerCase() !== BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase()) {
+    return null;
+  }
+
+  try {
+    const profileRef = doc(db, 'staff_profiles', uid);
+    const directoryRef = doc(db, 'staff_directory', uid);
+    const adminRef = doc(db, 'admins', uid);
+
+    const [profileSnap, directorySnap, adminSnap] = await Promise.all([
+      getDoc(profileRef),
+      getDoc(directoryRef),
+      getDoc(adminRef),
+    ]);
+
+    let updatedProfile: StaffProfile | null = profileSnap.exists()
+      ? (profileSnap.data() as StaffProfile)
+      : null;
+
+    if (profileSnap.exists()) {
+      const data = profileSnap.data() as StaffProfile;
+      if (data.role !== 'admin') {
+        await updateDoc(profileRef, {
+          role: 'admin',
+          updatedAt: serverTimestamp(),
+        });
+        updatedProfile = { ...data, role: 'admin' };
+      }
+    }
+
+    if (directorySnap.exists()) {
+      const dirData = directorySnap.data() as StaffDirectoryEntry;
+      if (dirData.role !== 'admin' || !dirData.active) {
+        await updateDoc(directoryRef, {
+          role: 'admin',
+          active: true,
+          updatedAt: serverTimestamp(),
+        });
+      }
+    }
+
+    if (!adminSnap.exists()) {
+      await setDoc(adminRef, {
+        grantedByUid: uid,
+        createdAt: serverTimestamp(),
+      });
+    }
+
+    return updatedProfile;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `staff_profiles/${uid}`);
+  }
+}
+
 export async function saveOwnStaffProfile(params: {
   uid: string;
   email: string;
@@ -78,7 +137,7 @@ export async function saveOwnStaffProfile(params: {
   }
 
   const isBootstrapped = email.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase();
-  const targetRole: StaffRole = existingProfile?.role ?? (isBootstrapped ? 'admin' : 'staff');
+  const targetRole: StaffRole = isBootstrapped ? 'admin' : (existingProfile?.role ?? 'staff');
 
   const profileRef = doc(db, 'staff_profiles', uid);
   const directoryRef = doc(db, 'staff_directory', uid);
@@ -111,14 +170,27 @@ export async function saveOwnStaffProfile(params: {
         nip: cleanNip,
         division: cleanDivision,
         jabatan: cleanJabatan,
+        ...(isBootstrapped ? { role: 'admin' as const } : {}),
         updatedAt: serverTimestamp(),
       });
       await updateDoc(directoryRef, {
         displayName: cleanName,
         division: cleanDivision,
         jabatan: cleanJabatan,
+        ...(isBootstrapped ? { role: 'admin' as const, active: true } : {}),
         updatedAt: serverTimestamp(),
       });
+    }
+
+    if (isBootstrapped) {
+      const adminRef = doc(db, 'admins', uid);
+      const adminSnap = await getDoc(adminRef);
+      if (!adminSnap.exists()) {
+        await setDoc(adminRef, {
+          grantedByUid: uid,
+          createdAt: serverTimestamp(),
+        });
+      }
     }
 
     return {
@@ -593,6 +665,51 @@ export async function updateOutgoingLetterDetails(params: {
   }
 }
 
+export async function attachDriveFileToLetter(params: {
+  letterId: string;
+  driveFileId: string;
+  driveFileName: string;
+  driveWebViewLink: string;
+}): Promise<void> {
+  const path = `outgoing_letters/${params.letterId}`;
+  const cleanId = sanitizeText(params.driveFileId, BLUEPRINT_LIMITS.maxDriveFileId);
+  const cleanName = sanitizeText(params.driveFileName, BLUEPRINT_LIMITS.maxDriveFileName);
+  const cleanLink = sanitizeText(params.driveWebViewLink, BLUEPRINT_LIMITS.maxDriveWebViewLink);
+
+  if (
+    cleanLink &&
+    !cleanLink.startsWith('https://drive.google.com/') &&
+    !cleanLink.startsWith('https://docs.google.com/')
+  ) {
+    throw new Error('Tautan Google Drive tidak valid.');
+  }
+
+  try {
+    await updateDoc(doc(db, 'outgoing_letters', params.letterId), {
+      driveFileId: cleanId,
+      driveFileName: cleanName,
+      driveWebViewLink: cleanLink,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function clearDriveFileFromLetter(letterId: string): Promise<void> {
+  const path = `outgoing_letters/${letterId}`;
+  try {
+    await updateDoc(doc(db, 'outgoing_letters', letterId), {
+      driveFileId: '',
+      driveFileName: '',
+      driveWebViewLink: '',
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
 export async function voidOutgoingLetter(params: {
   letterId: string;
   cancelReason: string;
@@ -652,5 +769,87 @@ export async function updateStaffMemberRoleAndStatus(params: {
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, dirPath);
+  }
+}
+
+export async function checkIsUserRevoked(uid: string): Promise<boolean> {
+  const path = `revoked_users/${uid}`;
+  try {
+    const snap = await getDoc(doc(db, 'revoked_users', uid));
+    return snap.exists();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+  }
+}
+
+export function subscribeRevokedUsers(
+  actorUid: string,
+  onData: (items: RevokedUser[]) => void,
+): Unsubscribe {
+  const path = 'revoked_users';
+  const q = query(collection(db, path), where('revokedByUid', '==', actorUid));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs
+        .map((d) => d.data() as RevokedUser)
+        .sort((a, b) => a.displayName.localeCompare(b.displayName));
+      onData(list);
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, path);
+    },
+  );
+}
+
+export async function deleteStaffAccount(params: {
+  targetUid: string;
+  displayName: string;
+  actorUid: string;
+}): Promise<void> {
+  const { targetUid, displayName, actorUid } = params;
+  if (targetUid === actorUid) {
+    throw new Error('Anda tidak dapat menghapus akun Anda sendiri.');
+  }
+
+  const cleanName = sanitizeText(displayName, BLUEPRINT_LIMITS.maxDisplayName) || 'Staf';
+  const revokedPath = `revoked_users/${targetUid}`;
+
+  try {
+    await setDoc(doc(db, 'revoked_users', targetUid), {
+      uid: targetUid,
+      displayName: cleanName,
+      revokedByUid: actorUid,
+      createdAt: serverTimestamp(),
+    });
+
+    const dirRef = doc(db, 'staff_directory', targetUid);
+    const dirSnap = await getDoc(dirRef);
+    if (dirSnap.exists()) {
+      await deleteDoc(dirRef);
+    }
+
+    const profileRef = doc(db, 'staff_profiles', targetUid);
+    const profileSnap = await getDoc(profileRef);
+    if (profileSnap.exists()) {
+      await deleteDoc(profileRef);
+    }
+
+    const adminRef = doc(db, 'admins', targetUid);
+    const adminSnap = await getDoc(adminRef);
+    if (adminSnap.exists()) {
+      await deleteDoc(adminRef);
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, revokedPath);
+  }
+}
+
+export async function restoreRevokedAccount(targetUid: string): Promise<void> {
+  const path = `revoked_users/${targetUid}`;
+  try {
+    await deleteDoc(doc(db, 'revoked_users', targetUid));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
