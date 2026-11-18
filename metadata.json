@@ -1,0 +1,6 @@
+{
+  "name": "Agenda Surat Keluar — UPT Pelatihan Pertanian",
+  "description": "Sistem pencatatan dan pemberian nomor surat keluar secara real-time sesuai urutan tanggal untuk staf administrasi UPT Pelatihan Pertanian.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

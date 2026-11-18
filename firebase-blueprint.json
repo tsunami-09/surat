@@ -1,0 +1,426 @@
+{
+  "entities": {
+    "StaffProfile": {
+      "title": "StaffProfile",
+      "description": "Private staff profile containing PII, readable only by the owner or admin.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "nip": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "division": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "jabatan": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "enum": ["staff", "admin"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "displayName", "nip", "division", "jabatan", "role", "createdAt", "updatedAt"]
+    },
+    "StaffDirectoryEntry": {
+      "title": "StaffDirectoryEntry",
+      "description": "Non-PII staff roster entry visible to authenticated UPT staff.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "division": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "jabatan": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "enum": ["staff", "admin"]
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "displayName", "division", "jabatan", "role", "active", "updatedAt"]
+    },
+    "AdminGrant": {
+      "title": "AdminGrant",
+      "description": "Explicit admin privilege grant record.",
+      "type": "object",
+      "properties": {
+        "grantedByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["grantedByUid", "createdAt"]
+    },
+    "SystemSettings": {
+      "title": "SystemSettings",
+      "description": "UPT Pelatihan Pertanian outgoing letter numbering format configuration.",
+      "type": "object",
+      "properties": {
+        "institutionName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "unitCode": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[A-Za-z0-9.\\-/]+$"
+        },
+        "numberFormat": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 100
+        },
+        "padDigits": {
+          "type": "integer"
+        },
+        "updatedByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["institutionName", "unitCode", "numberFormat", "padDigits", "updatedByUid", "updatedAt"]
+    },
+    "ClassificationCode": {
+      "title": "ClassificationCode",
+      "description": "Official letter classification code.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20,
+          "pattern": "^[A-Za-z0-9.\\-]+$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["code", "label", "description", "active", "createdAt", "updatedAt"]
+    },
+    "YearlyCounter": {
+      "title": "YearlyCounter",
+      "description": "Legacy yearly sequence counter.",
+      "type": "object",
+      "properties": {
+        "year": { "type": "integer" },
+        "lastSequence": { "type": "integer" },
+        "latestDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "totalIssued": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["year", "lastSequence", "latestDate", "totalIssued", "updatedAt"]
+    },
+    "SequenceAnchor": {
+      "title": "SequenceAnchor",
+      "description": "Legacy sequence sisipan tracker.",
+      "type": "object",
+      "properties": {
+        "year": { "type": "integer" },
+        "anchorSequence": { "type": "integer" },
+        "nextSisipan": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["year", "anchorSequence", "nextSisipan", "updatedAt"]
+    },
+    "DailyCounter": {
+      "title": "DailyCounter",
+      "description": "Atomic daily working-day quota counter (max 15 numbers per working day).",
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "year": { "type": "integer" },
+        "startSeq": { "type": "integer" },
+        "endSeq": { "type": "integer" },
+        "usedCount": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["date", "year", "startSeq", "endSeq", "usedCount", "updatedAt"]
+    },
+    "CalendarHoliday": {
+      "title": "CalendarHoliday",
+      "description": "National holiday (tanggal merah) or joint leave (cuti bersama) override entry.",
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "year": { "type": "integer" },
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["tanggal_merah", "cuti_bersama"]
+        },
+        "active": { "type": "boolean" },
+        "updatedByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["date", "year", "name", "kind", "active", "updatedByUid", "updatedAt"]
+    },
+    "OutgoingLetter": {
+      "title": "OutgoingLetter",
+      "description": "Registered outgoing letter with chronological sequence number.",
+      "type": "object",
+      "properties": {
+        "year": { "type": "integer" },
+        "month": { "type": "integer" },
+        "letterDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "sequenceNumber": { "type": "integer" },
+        "subNumber": { "type": "integer" },
+        "sortKey": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 40
+        },
+        "classificationCode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20,
+          "pattern": "^[A-Za-z0-9.\\-]+$"
+        },
+        "unitCode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[A-Za-z0-9.\\-/]+$"
+        },
+        "fullNumber": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 80
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "Surat Tugas",
+            "Surat Undangan",
+            "Surat Edaran",
+            "Nota Dinas",
+            "Surat Keterangan",
+            "Surat Pengantar",
+            "Surat Permohonan",
+            "Lainnya"
+          ]
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 300
+        },
+        "recipient": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 200
+        },
+        "picName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "status": {
+          "type": "string",
+          "enum": ["terbit", "batal"]
+        },
+        "cancelReason": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "createdByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdByName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "createdByDivision": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "year",
+        "month",
+        "letterDate",
+        "sequenceNumber",
+        "subNumber",
+        "sortKey",
+        "classificationCode",
+        "unitCode",
+        "fullNumber",
+        "category",
+        "subject",
+        "recipient",
+        "picName",
+        "notes",
+        "status",
+        "cancelReason",
+        "createdByUid",
+        "createdByName",
+        "createdByDivision",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/staff_profiles/{uid}": {
+      "schema": { "$ref": "#/entities/StaffProfile" },
+      "description": "Private staff profile with PII (email, NIP), restricted to owner or admin."
+    },
+    "/staff_directory/{uid}": {
+      "schema": { "$ref": "#/entities/StaffDirectoryEntry" },
+      "description": "Publicly readable (within verified staff) non-PII staff roster."
+    },
+    "/admins/{uid}": {
+      "schema": { "$ref": "#/entities/AdminGrant" },
+      "description": "Explicit admin privilege grant documents."
+    },
+    "/system_settings/{settingId}": {
+      "schema": { "$ref": "#/entities/SystemSettings" },
+      "description": "System-wide outgoing letter numbering format configuration."
+    },
+    "/classifications/{codeId}": {
+      "schema": { "$ref": "#/entities/ClassificationCode" },
+      "description": "Custom and standard classification codes for UPT Pelatihan Pertanian."
+    },
+    "/yearly_counters/{yearId}": {
+      "schema": { "$ref": "#/entities/YearlyCounter" },
+      "description": "Legacy yearly sequence tracker."
+    },
+    "/seq_anchors/{anchorId}": {
+      "schema": { "$ref": "#/entities/SequenceAnchor" },
+      "description": "Legacy sisipan tracker."
+    },
+    "/daily_counters/{dateId}": {
+      "schema": { "$ref": "#/entities/DailyCounter" },
+      "description": "Atomic daily 15-number quota tracker per working day."
+    },
+    "/calendar_holidays/{dateId}": {
+      "schema": { "$ref": "#/entities/CalendarHoliday" },
+      "description": "Tanggal merah and cuti bersama calendar overrides."
+    },
+    "/outgoing_letters/{letterId}": {
+      "schema": { "$ref": "#/entities/OutgoingLetter" },
+      "description": "Real-time ledger of issued and voided outgoing letters."
+    }
+  }
+}

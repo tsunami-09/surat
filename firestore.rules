@@ -1,0 +1,424 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'dikacahyo09@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // --- Validation Blueprints ---
+    function isValidStaffProfile(data) {
+      return data.keys().hasAll([
+          'uid', 'email', 'displayName', 'nip', 'division', 'jabatan', 'role', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid', 'email', 'displayName', 'nip', 'division', 'jabatan', 'role', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.displayName is string && data.displayName.size() >= 2 && data.displayName.size() <= 120 &&
+        data.nip is string && data.nip.size() <= 40 &&
+        data.division is string && data.division.size() >= 2 && data.division.size() <= 120 &&
+        data.jabatan is string && data.jabatan.size() >= 2 && data.jabatan.size() <= 120 &&
+        data.role in ['staff', 'admin'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStaffDirectory(data) {
+      return data.keys().hasAll([
+          'uid', 'displayName', 'division', 'jabatan', 'role', 'active', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid', 'displayName', 'division', 'jabatan', 'role', 'active', 'updatedAt'
+        ]) &&
+        isValidId(data.uid) &&
+        data.displayName is string && data.displayName.size() >= 2 && data.displayName.size() <= 120 &&
+        data.division is string && data.division.size() >= 2 && data.division.size() <= 120 &&
+        data.jabatan is string && data.jabatan.size() >= 2 && data.jabatan.size() <= 120 &&
+        data.role in ['staff', 'admin'] &&
+        data.active is bool &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAdminGrant(data) {
+      return data.keys().hasAll(['grantedByUid', 'createdAt']) &&
+        data.keys().hasOnly(['grantedByUid', 'createdAt']) &&
+        isValidId(data.grantedByUid) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidSystemSettings(data) {
+      return data.keys().hasAll([
+          'institutionName', 'unitCode', 'numberFormat', 'padDigits', 'updatedByUid', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'institutionName', 'unitCode', 'numberFormat', 'padDigits', 'updatedByUid', 'updatedAt'
+        ]) &&
+        data.institutionName is string && data.institutionName.size() >= 2 && data.institutionName.size() <= 120 &&
+        data.unitCode is string && data.unitCode.size() >= 2 && data.unitCode.size() <= 32 &&
+        data.unitCode.matches('^[A-Za-z0-9.\\-/]+$') &&
+        data.numberFormat is string && data.numberFormat.size() >= 5 && data.numberFormat.size() <= 100 &&
+        data.padDigits is int && data.padDigits >= 2 && data.padDigits <= 6 &&
+        isValidId(data.updatedByUid) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidClassification(data) {
+      return data.keys().hasAll(['code', 'label', 'description', 'active', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['code', 'label', 'description', 'active', 'createdAt', 'updatedAt']) &&
+        data.code is string && data.code.size() >= 1 && data.code.size() <= 20 &&
+        data.code.matches('^[A-Za-z0-9.\\-]+$') &&
+        data.label is string && data.label.size() >= 2 && data.label.size() <= 120 &&
+        data.description is string && data.description.size() <= 300 &&
+        data.active is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidYearlyCounter(data) {
+      return data.keys().hasAll(['year', 'lastSequence', 'latestDate', 'totalIssued', 'updatedAt']) &&
+        data.keys().hasOnly(['year', 'lastSequence', 'latestDate', 'totalIssued', 'updatedAt']) &&
+        data.year is int && data.year >= 2000 && data.year <= 2100 &&
+        data.lastSequence is int && data.lastSequence >= 0 && data.lastSequence <= 999999 &&
+        data.latestDate is string && data.latestDate.size() == 10 &&
+        data.latestDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.totalIssued is int && data.totalIssued >= 0 && data.totalIssued <= 999999 &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidSequenceAnchor(data) {
+      return data.keys().hasAll(['year', 'anchorSequence', 'nextSisipan', 'updatedAt']) &&
+        data.keys().hasOnly(['year', 'anchorSequence', 'nextSisipan', 'updatedAt']) &&
+        data.year is int && data.year >= 2000 && data.year <= 2100 &&
+        data.anchorSequence is int && data.anchorSequence >= 0 && data.anchorSequence <= 999999 &&
+        data.nextSisipan is int && data.nextSisipan >= 0 && data.nextSisipan <= 9999 &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidDailyCounter(data) {
+      return data.keys().hasAll(['date', 'year', 'startSeq', 'endSeq', 'usedCount', 'updatedAt']) &&
+        data.keys().hasOnly(['date', 'year', 'startSeq', 'endSeq', 'usedCount', 'updatedAt']) &&
+        data.date is string && data.date.size() == 10 &&
+        data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.year is int && data.year >= 2000 && data.year <= 2100 &&
+        data.startSeq is int && data.startSeq >= 1 && data.startSeq <= 999999 &&
+        data.endSeq is int && data.endSeq == (data.startSeq + 14) &&
+        data.usedCount is int && data.usedCount >= 1 && data.usedCount <= 15 &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCalendarHoliday(data) {
+      return data.keys().hasAll(['date', 'year', 'name', 'kind', 'active', 'updatedByUid', 'updatedAt']) &&
+        data.keys().hasOnly(['date', 'year', 'name', 'kind', 'active', 'updatedByUid', 'updatedAt']) &&
+        data.date is string && data.date.size() == 10 &&
+        data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.year is int && data.year >= 2000 && data.year <= 2100 &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 120 &&
+        data.kind in ['tanggal_merah', 'cuti_bersama'] &&
+        data.active is bool &&
+        isValidId(data.updatedByUid) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidOutgoingLetter(data) {
+      return data.keys().hasAll([
+          'year', 'month', 'letterDate', 'sequenceNumber', 'subNumber', 'sortKey',
+          'classificationCode', 'unitCode', 'fullNumber', 'category', 'subject',
+          'recipient', 'picName', 'notes', 'status', 'cancelReason',
+          'createdByUid', 'createdByName', 'createdByDivision', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'year', 'month', 'letterDate', 'sequenceNumber', 'subNumber', 'sortKey',
+          'classificationCode', 'unitCode', 'fullNumber', 'category', 'subject',
+          'recipient', 'picName', 'notes', 'status', 'cancelReason',
+          'createdByUid', 'createdByName', 'createdByDivision', 'createdAt', 'updatedAt'
+        ]) &&
+        data.year is int && data.year >= 2000 && data.year <= 2100 &&
+        data.month is int && data.month >= 1 && data.month <= 12 &&
+        data.letterDate is string && data.letterDate.size() == 10 &&
+        data.letterDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.sequenceNumber is int && data.sequenceNumber >= 1 && data.sequenceNumber <= 999999 &&
+        data.subNumber is int && data.subNumber >= 0 && data.subNumber <= 9999 &&
+        data.sortKey is string && data.sortKey.size() >= 10 && data.sortKey.size() <= 40 &&
+        data.classificationCode is string && data.classificationCode.size() >= 1 && data.classificationCode.size() <= 20 &&
+        data.classificationCode.matches('^[A-Za-z0-9.\\-]+$') &&
+        data.unitCode is string && data.unitCode.size() >= 1 && data.unitCode.size() <= 32 &&
+        data.unitCode.matches('^[A-Za-z0-9.\\-/]+$') &&
+        data.fullNumber is string && data.fullNumber.size() >= 3 && data.fullNumber.size() <= 80 &&
+        data.category in [
+          'Surat Tugas', 'Surat Undangan', 'Surat Edaran', 'Nota Dinas',
+          'Surat Keterangan', 'Surat Pengantar', 'Surat Permohonan', 'Lainnya'
+        ] &&
+        data.subject is string && data.subject.size() >= 3 && data.subject.size() <= 300 &&
+        data.recipient is string && data.recipient.size() >= 2 && data.recipient.size() <= 200 &&
+        data.picName is string && data.picName.size() >= 2 && data.picName.size() <= 120 &&
+        data.notes is string && data.notes.size() <= 500 &&
+        data.status in ['terbit', 'batal'] &&
+        data.cancelReason is string && data.cancelReason.size() <= 300 &&
+        isValidId(data.createdByUid) &&
+        data.createdByName is string && data.createdByName.size() >= 2 && data.createdByName.size() <= 120 &&
+        data.createdByDivision is string && data.createdByDivision.size() >= 2 && data.createdByDivision.size() <= 120 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    // Connection test helper
+    match /test/connection {
+      allow get: if isSignedIn();
+    }
+
+    // Private PII profiles: isolated strictly to owner or admin, never listable
+    match /staff_profiles/{uid} {
+      allow get: if isVerifiedUser() && isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if false;
+      allow create: if isVerifiedUser() && isValidId(uid) && isOwner(uid) &&
+        isValidStaffProfile(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        (incoming().role == 'staff' || (isBootstrappedAdmin() && incoming().role == 'admin')) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(uid) &&
+        isValidStaffProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().email == existing().email &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          (isOwner(uid) &&
+            incoming().role == existing().role &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'nip', 'division', 'jabatan', 'updatedAt'])) ||
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'nip', 'division', 'jabatan', 'role', 'updatedAt']))
+        );
+      allow delete: if false;
+    }
+
+    // Non-PII staff directory for verified UPT staff
+    match /staff_directory/{uid} {
+      allow get: if isVerifiedUser() && isValidId(uid);
+      allow list: if isVerifiedUser() && resource.data.uid > '';
+      allow create: if isVerifiedUser() && isValidId(uid) && isOwner(uid) &&
+        isValidStaffDirectory(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        (incoming().role == 'staff' || (isBootstrappedAdmin() && incoming().role == 'admin')) &&
+        incoming().active == true &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(uid) &&
+        isValidStaffDirectory(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().updatedAt == request.time && (
+          (isOwner(uid) &&
+            incoming().role == existing().role &&
+            incoming().active == existing().active &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'division', 'jabatan', 'updatedAt'])) ||
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'division', 'jabatan', 'role', 'active', 'updatedAt']))
+        );
+      allow delete: if false;
+    }
+
+    // Explicit admin registry
+    match /admins/{uid} {
+      allow get: if isVerifiedUser() && isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if false;
+      allow create: if isVerifiedUser() && isValidId(uid) && isAdmin() &&
+        isValidAdminGrant(incoming()) &&
+        incoming().grantedByUid == request.auth.uid &&
+        incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(uid) && isAdmin() && uid != request.auth.uid;
+    }
+
+    // System numbering format settings
+    match /system_settings/{settingId} {
+      allow get: if isVerifiedUser() && isValidId(settingId);
+      allow list: if false;
+      allow create: if isVerifiedUser() && settingId == 'main' && isAdmin() &&
+        isValidSystemSettings(incoming()) &&
+        incoming().updatedByUid == request.auth.uid &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && settingId == 'main' && isAdmin() &&
+        isValidSystemSettings(incoming()) &&
+        incoming().updatedByUid == request.auth.uid &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'institutionName', 'unitCode', 'numberFormat', 'padDigits', 'updatedByUid', 'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    // Classification codes
+    match /classifications/{codeId} {
+      allow get: if isVerifiedUser() && isValidId(codeId);
+      allow list: if isVerifiedUser() && resource.data.code > '';
+      allow create: if isVerifiedUser() && isValidId(codeId) && isAdmin() &&
+        isValidClassification(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(codeId) && isAdmin() &&
+        isValidClassification(incoming()) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'code', 'label', 'description', 'active', 'updatedAt'
+        ]);
+      allow delete: if isVerifiedUser() && isValidId(codeId) && isAdmin();
+    }
+
+    // Legacy yearly atomic counters
+    match /yearly_counters/{yearId} {
+      allow get: if isVerifiedUser() && isValidId(yearId);
+      allow list: if isVerifiedUser() && resource.data.year >= 2000;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // Legacy per-sequence anchors
+    match /seq_anchors/{anchorId} {
+      allow get: if isVerifiedUser() && isValidId(anchorId);
+      allow list: if isVerifiedUser() && resource.data.year >= 2000;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // Atomic daily 15-number quota counters (per working day)
+    match /daily_counters/{dateId} {
+      allow get: if isVerifiedUser() && isValidId(dateId);
+      allow list: if isVerifiedUser() && resource.data.year >= 2000;
+      allow create: if isVerifiedUser() && isValidId(dateId) &&
+        isValidDailyCounter(incoming()) &&
+        dateId == incoming().date &&
+        incoming().usedCount == 1 &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(dateId) &&
+        isValidDailyCounter(incoming()) &&
+        incoming().date == existing().date &&
+        incoming().year == existing().year &&
+        incoming().startSeq == existing().startSeq &&
+        incoming().endSeq == existing().endSeq &&
+        incoming().usedCount == (existing().usedCount + 1) &&
+        incoming().usedCount <= 15 &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'usedCount', 'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    // Calendar holidays & cuti bersama overrides
+    match /calendar_holidays/{dateId} {
+      allow get: if isVerifiedUser() && isValidId(dateId);
+      allow list: if isVerifiedUser() && resource.data.year >= 2000;
+      allow create: if isVerifiedUser() && isValidId(dateId) && isAdmin() &&
+        isValidCalendarHoliday(incoming()) &&
+        dateId == incoming().date &&
+        incoming().updatedByUid == request.auth.uid &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(dateId) && isAdmin() &&
+        isValidCalendarHoliday(incoming()) &&
+        incoming().date == existing().date &&
+        incoming().year == existing().year &&
+        incoming().updatedByUid == request.auth.uid &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'kind', 'active', 'updatedByUid', 'updatedAt'
+        ]);
+      allow delete: if isVerifiedUser() && isValidId(dateId) && isAdmin();
+    }
+
+    // Outgoing letters ledger
+    match /outgoing_letters/{letterId} {
+      allow get: if isVerifiedUser() && isValidId(letterId);
+      allow list: if isVerifiedUser() && resource.data.year >= 2000;
+      allow create: if isVerifiedUser() && isValidId(letterId) &&
+        isValidOutgoingLetter(incoming()) &&
+        incoming().createdByUid == request.auth.uid &&
+        incoming().status == 'terbit' &&
+        incoming().cancelReason == '' &&
+        incoming().subNumber == 0 &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        existsAfter(/databases/$(database)/documents/daily_counters/$(incoming().letterDate)) &&
+        incoming().sequenceNumber >= getAfter(/databases/$(database)/documents/daily_counters/$(incoming().letterDate)).data.startSeq &&
+        incoming().sequenceNumber <= getAfter(/databases/$(database)/documents/daily_counters/$(incoming().letterDate)).data.endSeq;
+      allow update: if isVerifiedUser() && isValidId(letterId) &&
+        isValidOutgoingLetter(incoming()) &&
+        incoming().createdByUid == existing().createdByUid &&
+        incoming().createdByName == existing().createdByName &&
+        incoming().createdByDivision == existing().createdByDivision &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().year == existing().year &&
+        incoming().month == existing().month &&
+        incoming().letterDate == existing().letterDate &&
+        incoming().sequenceNumber == existing().sequenceNumber &&
+        incoming().subNumber == existing().subNumber &&
+        incoming().sortKey == existing().sortKey &&
+        incoming().classificationCode == existing().classificationCode &&
+        incoming().unitCode == existing().unitCode &&
+        incoming().fullNumber == existing().fullNumber &&
+        incoming().updatedAt == request.time && (
+          // Action 1: Edit metadata of an active letter (owner or admin)
+          ((isAdmin() || existing().createdByUid == request.auth.uid) &&
+            existing().status == 'terbit' &&
+            incoming().status == 'terbit' &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'category', 'subject', 'recipient', 'picName', 'notes', 'updatedAt'
+            ])) ||
+          // Action 2: Void / Batalkan an active letter (owner or admin)
+          ((isAdmin() || existing().createdByUid == request.auth.uid) &&
+            existing().status == 'terbit' &&
+            incoming().status == 'batal' &&
+            incoming().cancelReason.size() >= 3 &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'cancelReason', 'updatedAt'
+            ])) ||
+          // Action 3: Admin correction override
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'category', 'subject', 'recipient', 'picName', 'notes', 'status', 'cancelReason', 'updatedAt'
+            ]))
+        );
+      allow delete: if false;
+    }
+  }
+}
