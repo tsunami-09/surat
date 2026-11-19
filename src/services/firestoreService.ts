@@ -552,7 +552,7 @@ export async function issueOutgoingLetter(params: {
 
       if (usedCount >= DAILY_QUOTA) {
         throw new Error(
-          `Kuota maksimal 15 nomor untuk tanggal ${letterDate} sudah terpenuhi.`,
+          `Kuota maksimal ${DAILY_QUOTA} nomor untuk tanggal ${letterDate} sudah terpenuhi.`,
         );
       }
 
@@ -562,7 +562,7 @@ export async function issueOutgoingLetter(params: {
 
       if (sequenceNumber > effectiveEnd) {
         throw new Error(
-          `Kuota maksimal 15 nomor untuk tanggal ${letterDate} sudah terpenuhi.`,
+          `Kuota maksimal ${DAILY_QUOTA} nomor untuk tanggal ${letterDate} sudah terpenuhi.`,
         );
       }
 
@@ -623,7 +623,10 @@ export async function issueOutgoingLetter(params: {
 
     return result;
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Kuota maksimal 15 nomor')) {
+    if (
+      error instanceof Error &&
+      error.message.includes(`Kuota maksimal ${DAILY_QUOTA} nomor`)
+    ) {
       throw error;
     }
     handleFirestoreError(error, OperationType.CREATE, `outgoing_letters/${letterId}`);
@@ -658,51 +661,6 @@ export async function updateOutgoingLetterDetails(params: {
       recipient: cleanRecipient,
       picName: cleanPic,
       notes: cleanNotes,
-      updatedAt: serverTimestamp(),
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, path);
-  }
-}
-
-export async function attachDriveFileToLetter(params: {
-  letterId: string;
-  driveFileId: string;
-  driveFileName: string;
-  driveWebViewLink: string;
-}): Promise<void> {
-  const path = `outgoing_letters/${params.letterId}`;
-  const cleanId = sanitizeText(params.driveFileId, BLUEPRINT_LIMITS.maxDriveFileId);
-  const cleanName = sanitizeText(params.driveFileName, BLUEPRINT_LIMITS.maxDriveFileName);
-  const cleanLink = sanitizeText(params.driveWebViewLink, BLUEPRINT_LIMITS.maxDriveWebViewLink);
-
-  if (
-    cleanLink &&
-    !cleanLink.startsWith('https://drive.google.com/') &&
-    !cleanLink.startsWith('https://docs.google.com/')
-  ) {
-    throw new Error('Tautan Google Drive tidak valid.');
-  }
-
-  try {
-    await updateDoc(doc(db, 'outgoing_letters', params.letterId), {
-      driveFileId: cleanId,
-      driveFileName: cleanName,
-      driveWebViewLink: cleanLink,
-      updatedAt: serverTimestamp(),
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, path);
-  }
-}
-
-export async function clearDriveFileFromLetter(letterId: string): Promise<void> {
-  const path = `outgoing_letters/${letterId}`;
-  try {
-    await updateDoc(doc(db, 'outgoing_letters', letterId), {
-      driveFileId: '',
-      driveFileName: '',
-      driveWebViewLink: '',
       updatedAt: serverTimestamp(),
     });
   } catch (error) {

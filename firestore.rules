@@ -152,8 +152,8 @@ service cloud.firestore {
         data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
         data.year is int && data.year >= 2000 && data.year <= 2100 &&
         data.startSeq is int && data.startSeq >= 1 && data.startSeq <= 999999 &&
-        data.endSeq is int && data.endSeq == (data.startSeq + 14) &&
-        data.usedCount is int && data.usedCount >= 1 && data.usedCount <= 15 &&
+        data.endSeq is int && (data.endSeq == (data.startSeq + 19) || data.endSeq == (data.startSeq + 14)) &&
+        data.usedCount is int && data.usedCount >= 1 && data.usedCount <= 20 &&
         data.updatedAt is timestamp;
     }
 
@@ -181,9 +181,7 @@ service cloud.firestore {
           'year', 'month', 'letterDate', 'sequenceNumber', 'subNumber', 'sortKey',
           'classificationCode', 'unitCode', 'fullNumber', 'category', 'subject',
           'recipient', 'picName', 'notes', 'status', 'cancelReason',
-          'createdByUid', 'createdByName', 'createdByDivision',
-          'driveFileId', 'driveFileName', 'driveWebViewLink',
-          'createdAt', 'updatedAt'
+          'createdByUid', 'createdByName', 'createdByDivision', 'createdAt', 'updatedAt'
         ]) &&
         data.year is int && data.year >= 2000 && data.year <= 2100 &&
         data.month is int && data.month >= 1 && data.month <= 12 &&
@@ -210,15 +208,6 @@ service cloud.firestore {
         isValidId(data.createdByUid) &&
         data.createdByName is string && data.createdByName.size() >= 2 && data.createdByName.size() <= 120 &&
         data.createdByDivision is string && data.createdByDivision.size() >= 2 && data.createdByDivision.size() <= 120 &&
-        (!('driveFileId' in data) || (data.driveFileId is string && data.driveFileId.size() <= 128)) &&
-        (!('driveFileName' in data) || (data.driveFileName is string && data.driveFileName.size() <= 240)) &&
-        (!('driveWebViewLink' in data) || (
-          data.driveWebViewLink is string &&
-          data.driveWebViewLink.size() <= 500 &&
-          (data.driveWebViewLink == '' ||
-            data.driveWebViewLink.matches('^https://drive\\.google\\.com/.*') ||
-            data.driveWebViewLink.matches('^https://docs\\.google\\.com/.*'))
-        )) &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
     }
@@ -358,13 +347,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Atomic daily 15-number quota counters (per working day)
+    // Atomic daily 20-number quota counters (per working day)
     match /daily_counters/{dateId} {
       allow get: if isVerifiedUser() && isValidId(dateId);
       allow list: if isVerifiedUser() && resource.data.year >= 2000;
       allow create: if isVerifiedUser() && isNotRevoked() && isValidId(dateId) &&
         isValidDailyCounter(incoming()) &&
         dateId == incoming().date &&
+        incoming().endSeq == (incoming().startSeq + 19) &&
         incoming().usedCount == 1 &&
         incoming().updatedAt == request.time;
       allow update: if isVerifiedUser() && isNotRevoked() && isValidId(dateId) &&
@@ -374,7 +364,7 @@ service cloud.firestore {
         incoming().startSeq == existing().startSeq &&
         incoming().endSeq == existing().endSeq &&
         incoming().usedCount == (existing().usedCount + 1) &&
-        incoming().usedCount <= 15 &&
+        incoming().usedCount <= 20 &&
         incoming().updatedAt == request.time &&
         incoming().diff(existing()).affectedKeys().hasOnly([
           'usedCount', 'updatedAt'
@@ -441,14 +431,7 @@ service cloud.firestore {
             incoming().diff(existing()).affectedKeys().hasOnly([
               'category', 'subject', 'recipient', 'picName', 'notes', 'updatedAt'
             ])) ||
-          // Action 2: Attach or update Google Drive file reference (owner or admin)
-          ((isAdmin() || existing().createdByUid == request.auth.uid) &&
-            existing().status == 'terbit' &&
-            incoming().status == 'terbit' &&
-            incoming().diff(existing()).affectedKeys().hasOnly([
-              'driveFileId', 'driveFileName', 'driveWebViewLink', 'updatedAt'
-            ])) ||
-          // Action 3: Void / Batalkan an active letter (owner or admin)
+          // Action 2: Void / Batalkan an active letter (owner or admin)
           ((isAdmin() || existing().createdByUid == request.auth.uid) &&
             existing().status == 'terbit' &&
             incoming().status == 'batal' &&
@@ -456,11 +439,10 @@ service cloud.firestore {
             incoming().diff(existing()).affectedKeys().hasOnly([
               'status', 'cancelReason', 'updatedAt'
             ])) ||
-          // Action 4: Admin correction override
+          // Action 3: Admin correction override
           (isAdmin() &&
             incoming().diff(existing()).affectedKeys().hasOnly([
-              'category', 'subject', 'recipient', 'picName', 'notes', 'status', 'cancelReason',
-              'driveFileId', 'driveFileName', 'driveWebViewLink', 'updatedAt'
+              'category', 'subject', 'recipient', 'picName', 'notes', 'status', 'cancelReason', 'updatedAt'
             ]))
         );
       allow delete: if false;

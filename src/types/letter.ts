@@ -25,7 +25,7 @@ export type DayAllocationStatus =
   | 'tanggal_merah'
   | 'cuti_bersama';
 
-export const DAILY_QUOTA = 15;
+export const DAILY_QUOTA = 20;
 
 export const BLUEPRINT_LIMITS = {
   idPattern: /^[a-zA-Z0-9_\-]+$/,
@@ -53,9 +53,6 @@ export const BLUEPRINT_LIMITS = {
   maxInstitutionName: 120,
   maxNumberFormat: 100,
   maxHolidayName: 120,
-  maxDriveFileId: 128,
-  maxDriveFileName: 240,
-  maxDriveWebViewLink: 500,
 } as const;
 
 export const UPT_DIVISIONS = [
@@ -169,24 +166,8 @@ export interface OutgoingLetter {
   createdByUid: string;
   createdByName: string;
   createdByDivision: string;
-  driveFileId?: string;
-  driveFileName?: string;
-  driveWebViewLink?: string;
   createdAt?: Timestamp | null;
   updatedAt?: Timestamp | null;
-}
-
-export interface DriveFileItem {
-  id: string;
-  name: string;
-  mimeType: string;
-  size?: string;
-  webViewLink?: string;
-  webContentLink?: string;
-  createdTime?: string;
-  modifiedTime?: string;
-  description?: string;
-  parents?: string[];
 }
 
 export interface NumberPreviewResult {

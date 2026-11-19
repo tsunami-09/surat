@@ -4,28 +4,17 @@ import {
   CalendarDays,
   FilePlus2,
   FileSpreadsheet,
-  HardDrive,
   LogOut,
   Menu,
   SlidersHorizontal,
   Users,
   X,
 } from 'lucide-react';
-import { onAuthStateChanged, type User } from 'firebase/auth';
-import {
-  auth,
-  BOOTSTRAPPED_ADMIN_EMAIL,
-  connectGoogleDrive,
-  getDriveAccessToken,
-  setDriveAccessToken,
-  signInWithGoogleWorkspace,
-  signOutWorkspace,
-} from './lib/firebase';
+import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
+import { auth, BOOTSTRAPPED_ADMIN_EMAIL, googleProvider } from './lib/firebase';
 import { BUILTIN_CLASSIFICATIONS, DEFAULT_SYSTEM_SETTINGS } from './lib/numbering';
 import {
-  attachDriveFileToLetter,
   checkIsUserRevoked,
-  clearDriveFileFromLetter,
   deleteStaffAccount,
   fetchUserProfileAndAdminStatus,
   issueOutgoingLetter,
@@ -59,7 +48,6 @@ import type {
   SystemSettings,
 } from './types/letter';
 import { CalendarAllocationView } from './components/CalendarAllocationView';
-import { DriveStorageView } from './components/DriveStorageView';
 import { IssueLetterModal } from './components/IssueLetterModal';
 import { LedgerView } from './components/LedgerView';
 import { LetterDetailDrawer } from './components/LetterDetailDrawer';
@@ -69,12 +57,11 @@ import { SettingsView } from './components/SettingsView';
 import { StaffView } from './components/StaffView';
 import { StatsView } from './components/StatsView';
 
-type ActiveTab = 'ledger' | 'calendar' | 'drive' | 'stats' | 'settings' | 'staff';
+type ActiveTab = 'ledger' | 'calendar' | 'stats' | 'settings' | 'staff';
 
 const NAV_ITEMS: { id: ActiveTab; label: string; icon: typeof FileSpreadsheet }[] = [
   { id: 'ledger', label: 'Buku Agenda Surat', icon: FileSpreadsheet },
   { id: 'calendar', label: 'Kalender & Alokasi', icon: CalendarDays },
-  { id: 'drive', label: 'Penyimpanan Drive', icon: HardDrive },
   { id: 'stats', label: 'Statistik & Rekap', icon: BarChart3 },
   { id: 'settings', label: 'Klasifikasi & Format', icon: SlidersHorizontal },
   { id: 'staff', label: 'Daftar Staf', icon: Users },
@@ -84,7 +71,6 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [driveToken, setDriveToken] = useState<string | null>(() => getDriveAccessToken());
 
   const [profile, setProfile] = useState<StaffProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -112,8 +98,6 @@ export default function App() {
       setUser(nextUser);
       setAuthError(null);
       if (!nextUser) {
-        setDriveAccessToken(null);
-        setDriveToken(null);
         setProfile(null);
         setIsAdminGrant(false);
         setIsRevoked(false);
@@ -121,8 +105,6 @@ export default function App() {
         setAuthReady(true);
         return;
       }
-
-      setDriveToken(getDriveAccessToken());
 
       if (!nextUser.emailVerified) {
         setProfile(null);
@@ -234,10 +216,7 @@ export default function App() {
   const handleSignIn = async () => {
     setAuthError(null);
     try {
-      const { accessToken } = await signInWithGoogleWorkspace();
-      if (accessToken) {
-        setDriveToken(accessToken);
-      }
+      await signInWithPopup(auth, googleProvider);
     } catch (err) {
       setAuthError(
         err instanceof Error
@@ -247,20 +226,8 @@ export default function App() {
     }
   };
 
-  const handleConnectDrive = async (): Promise<string> => {
-    const token = await connectGoogleDrive();
-    setDriveToken(token);
-    return token;
-  };
-
-  const handleDriveTokenExpired = () => {
-    setDriveAccessToken(null);
-    setDriveToken(null);
-  };
-
   const handleSignOut = async () => {
-    setDriveToken(null);
-    await signOutWorkspace();
+    await signOut(auth);
   };
 
   const handleSaveProfile = async (data: {
@@ -520,18 +487,6 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'drive' && (
-            <DriveStorageView
-              userEmail={user.email ?? ''}
-              driveToken={driveToken}
-              letters={letters}
-              onConnectDrive={handleConnectDrive}
-              onTokenExpired={handleDriveTokenExpired}
-              onAttachToLetter={attachDriveFileToLetter}
-              onClearLetterAttachment={clearDriveFileFromLetter}
-            />
-          )}
-
           {activeTab === 'stats' && (
             <StatsView letters={letters} classifications={classifications} />
           )}
@@ -584,10 +539,6 @@ export default function App() {
           dailyCounters={dailyCounters}
           customHolidays={customHolidays}
           initialDate={preselectedIssueDate}
-          driveToken={driveToken}
-          onConnectDrive={handleConnectDrive}
-          onTokenExpired={handleDriveTokenExpired}
-          onAttachDriveFile={attachDriveFileToLetter}
           onIssue={(payload) =>
             issueOutgoingLetter({
               ...payload,
@@ -609,11 +560,6 @@ export default function App() {
           profile={profile}
           isAdmin={isAdmin}
           padDigits={settings.padDigits}
-          driveToken={driveToken}
-          onConnectDrive={handleConnectDrive}
-          onTokenExpired={handleDriveTokenExpired}
-          onAttachDriveFile={attachDriveFileToLetter}
-          onClearDriveFile={clearDriveFileFromLetter}
           onUpdate={updateOutgoingLetterDetails}
           onVoid={voidOutgoingLetter}
           onClose={() => setSelectedLetterId(null)}

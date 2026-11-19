@@ -1,21 +1,5 @@
-import { useState, type ChangeEvent, type FormEvent } from 'react';
-import {
-  Ban,
-  Check,
-  Copy,
-  Edit3,
-  ExternalLink,
-  FileUp,
-  HardDrive,
-  Trash2,
-  X,
-} from 'lucide-react';
-import {
-  deleteDriveFile,
-  DriveAuthError,
-  ensureArchiveFolder,
-  uploadFileToDrive,
-} from '../services/googleDriveService';
+import { useState, type FormEvent } from 'react';
+import { Ban, Check, Copy, Edit3, X } from 'lucide-react';
 import { formatSequenceCode, formatTanggalIndonesia } from '../lib/numbering';
 import {
   LETTER_CATEGORIES,
@@ -29,16 +13,6 @@ interface LetterDetailDrawerProps {
   profile: StaffProfile;
   isAdmin: boolean;
   padDigits: number;
-  driveToken: string | null;
-  onConnectDrive: () => Promise<string>;
-  onTokenExpired: () => void;
-  onAttachDriveFile: (params: {
-    letterId: string;
-    driveFileId: string;
-    driveFileName: string;
-    driveWebViewLink: string;
-  }) => Promise<void>;
-  onClearDriveFile: (letterId: string) => Promise<void>;
   onUpdate: (payload: {
     letterId: string;
     category: LetterCategory;
@@ -56,11 +30,6 @@ export function LetterDetailDrawer({
   profile,
   isAdmin,
   padDigits,
-  driveToken,
-  onConnectDrive,
-  onTokenExpired,
-  onAttachDriveFile,
-  onClearDriveFile,
   onUpdate,
   onVoid,
   onClose,
@@ -78,9 +47,6 @@ export function LetterDetailDrawer({
   const [cancelReason, setCancelReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [uploadingDrive, setUploadingDrive] = useState(false);
-  const [confirmRemoveDrive, setConfirmRemoveDrive] = useState(false);
-  const [removingDrive, setRemovingDrive] = useState(false);
 
   const handleCopy = async () => {
     try {
@@ -128,61 +94,6 @@ export function LetterDetailDrawer({
       setError(err instanceof Error ? err.message : 'Gagal membatalkan nomor surat.');
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleUploadDriveFile = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    setError(null);
-    setUploadingDrive(true);
-    try {
-      const token = driveToken ?? (await onConnectDrive());
-      const folderInfo = await ensureArchiveFolder(token, letter.year);
-      const safeFileName = `[${letter.fullNumber.replace(/[\\/]/g, '-')}] ${file.name}`;
-      const uploaded = await uploadFileToDrive({
-        accessToken: token,
-        file,
-        fileName: safeFileName,
-        mimeType: file.type || 'application/octet-stream',
-        folderId: folderInfo.targetFolderId,
-        description: `Arsip surat ${letter.fullNumber} - ${letter.subject}`,
-      });
-      await onAttachDriveFile({
-        letterId: letter.id,
-        driveFileId: uploaded.id,
-        driveFileName: uploaded.name,
-        driveWebViewLink:
-          uploaded.webViewLink || `https://drive.google.com/file/d/${uploaded.id}/view`,
-      });
-    } catch (err) {
-      if (err instanceof DriveAuthError) onTokenExpired();
-      setError(
-        err instanceof Error ? err.message : 'Gagal mengunggah berkas ke Google Drive.',
-      );
-    } finally {
-      setUploadingDrive(false);
-    }
-  };
-
-  const handleConfirmDeleteDriveAttachment = async () => {
-    setError(null);
-    setRemovingDrive(true);
-    try {
-      if (letter.driveFileId) {
-        const token = driveToken ?? (await onConnectDrive());
-        await deleteDriveFile(token, letter.driveFileId);
-      }
-      await onClearDriveFile(letter.id);
-      setConfirmRemoveDrive(false);
-    } catch (err) {
-      if (err instanceof DriveAuthError) onTokenExpired();
-      setError(
-        err instanceof Error ? err.message : 'Gagal menghapus berkas dari Google Drive.',
-      );
-    } finally {
-      setRemovingDrive(false);
     }
   };
 
@@ -307,119 +218,6 @@ export function LetterDetailDrawer({
                   <p className="text-sm text-red-900 mt-1">{letter.cancelReason}</p>
                 </div>
               )}
-
-              {/* Google Drive Storage Attachment Section */}
-              <div className="pt-4 border-t border-slate-200 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <HardDrive className="w-4 h-4 text-emerald-700" />
-                    <p className="text-xs font-semibold text-slate-700">
-                      Arsip Berkas di Google Drive
-                    </p>
-                  </div>
-                </div>
-
-                {letter.driveWebViewLink ? (
-                  <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-slate-900 break-all">
-                          {letter.driveFileName || 'Berkas Surat di Google Drive'}
-                        </p>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          Tersimpan di folder arsip Google Drive
-                        </p>
-                      </div>
-                      <a
-                        href={letter.driveWebViewLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-white border border-emerald-200 hover:bg-emerald-50 rounded-lg transition-colors whitespace-nowrap shrink-0"
-                      >
-                        Buka di Drive
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    </div>
-
-                    {canModify && (
-                      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">
-                        <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg cursor-pointer">
-                          <FileUp className="w-3.5 h-3.5" />
-                          <span>{uploadingDrive ? 'Mengunggah...' : 'Unggah Ulang Berkas'}</span>
-                          <input
-                            type="file"
-                            disabled={uploadingDrive}
-                            onChange={(e) => void handleUploadDriveFile(e)}
-                            className="hidden"
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmRemoveDrive(true)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-white border border-red-200 hover:bg-red-50 rounded-lg cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Hapus dari Drive
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-xs text-slate-600">
-                      Belum ada berkas PDF/Word yang disimpan di Google Drive untuk nomor ini.
-                    </p>
-                    {canModify && (
-                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg cursor-pointer whitespace-nowrap shrink-0">
-                        <FileUp className="w-3.5 h-3.5" />
-                        <span>
-                          {uploadingDrive
-                            ? 'Mengunggah...'
-                            : driveToken
-                              ? 'Simpan ke Google Drive'
-                              : 'Hubungkan & Unggah ke Drive'}
-                        </span>
-                        <input
-                          type="file"
-                          disabled={uploadingDrive}
-                          onChange={(e) => void handleUploadDriveFile(e)}
-                          className="hidden"
-                        />
-                      </label>
-                    )}
-                  </div>
-                )}
-
-                {confirmRemoveDrive && (
-                  <div className="p-4 rounded-lg bg-red-50 border border-red-200 space-y-3">
-                    <p className="text-xs font-semibold text-red-900">
-                      Konfirmasi Penghapusan Berkas Google Drive
-                    </p>
-                    <p className="text-xs text-red-800 leading-relaxed">
-                      Apakah Anda yakin ingin menghapus berkas{' '}
-                      <strong>{letter.driveFileName}</strong> dari Google Drive dan melepaskan tautannya dari nomor surat ini?
-                    </p>
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        type="button"
-                        disabled={removingDrive}
-                        onClick={() => setConfirmRemoveDrive(false)}
-                        className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg cursor-pointer"
-                      >
-                        Batal
-                      </button>
-                      <button
-                        type="button"
-                        disabled={removingDrive}
-                        onClick={() => void handleConfirmDeleteDriveAttachment()}
-                        className="px-3 py-1.5 text-xs font-semibold text-white bg-red-700 hover:bg-red-800 disabled:opacity-50 rounded-lg cursor-pointer"
-                      >
-                        {removingDrive ? 'Menghapus...' : 'Ya, Hapus Berkas'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
           )}
 

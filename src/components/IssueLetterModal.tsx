@@ -1,20 +1,5 @@
-import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
-import {
-  AlertCircle,
-  Calendar,
-  Check,
-  Copy,
-  ExternalLink,
-  FileUp,
-  HardDrive,
-  Info,
-  X,
-} from 'lucide-react';
-import {
-  DriveAuthError,
-  ensureArchiveFolder,
-  uploadFileToDrive,
-} from '../services/googleDriveService';
+import { useMemo, useState, type FormEvent } from 'react';
+import { AlertCircle, Calendar, Check, Copy, Info, X } from 'lucide-react';
 import { findNearestWorkingDate } from '../lib/calendar';
 import {
   formatSequenceCode,
@@ -40,15 +25,6 @@ interface IssueLetterModalProps {
   dailyCounters: Record<string, DailyCounter>;
   customHolidays: Record<string, CalendarHoliday>;
   initialDate?: string | null;
-  driveToken: string | null;
-  onConnectDrive: () => Promise<string>;
-  onTokenExpired: () => void;
-  onAttachDriveFile: (params: {
-    letterId: string;
-    driveFileId: string;
-    driveFileName: string;
-    driveWebViewLink: string;
-  }) => Promise<void>;
   onIssue: (payload: {
     letterDate: string;
     classificationCode: string;
@@ -68,10 +44,6 @@ export function IssueLetterModal({
   dailyCounters,
   customHolidays,
   initialDate,
-  driveToken,
-  onConnectDrive,
-  onTokenExpired,
-  onAttachDriveFile,
   onIssue,
   onClose,
 }: IssueLetterModalProps) {
@@ -95,15 +67,11 @@ export function IssueLetterModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [issuedResult, setIssuedResult] = useState<{
-    id: string;
     fullNumber: string;
     letterDate: string;
     subject: string;
-    driveFileName?: string;
-    driveWebViewLink?: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
-  const [uploadingDrive, setUploadingDrive] = useState(false);
 
   const preview = useMemo(
     () =>
@@ -149,7 +117,6 @@ export function IssueLetterModal({
         notes: notes.trim(),
       });
       setIssuedResult({
-        id: res.id,
         fullNumber: res.fullNumber,
         letterDate,
         subject: subject.trim(),
@@ -158,52 +125,6 @@ export function IssueLetterModal({
       setError(err instanceof Error ? err.message : 'Gagal menerbitkan nomor surat.');
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleUploadIssuedToDrive = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file || !issuedResult) return;
-    setError(null);
-    setUploadingDrive(true);
-    try {
-      const token = driveToken ?? (await onConnectDrive());
-      const year = Number(issuedResult.letterDate.slice(0, 4));
-      const folderInfo = await ensureArchiveFolder(token, year);
-      const safeFileName = `[${issuedResult.fullNumber.replace(/[\\/]/g, '-')}] ${file.name}`;
-      const uploaded = await uploadFileToDrive({
-        accessToken: token,
-        file,
-        fileName: safeFileName,
-        mimeType: file.type || 'application/octet-stream',
-        folderId: folderInfo.targetFolderId,
-        description: `Arsip surat ${issuedResult.fullNumber} - ${issuedResult.subject}`,
-      });
-      const viewLink =
-        uploaded.webViewLink || `https://drive.google.com/file/d/${uploaded.id}/view`;
-      await onAttachDriveFile({
-        letterId: issuedResult.id,
-        driveFileId: uploaded.id,
-        driveFileName: uploaded.name,
-        driveWebViewLink: viewLink,
-      });
-      setIssuedResult((prev) =>
-        prev
-          ? {
-              ...prev,
-              driveFileName: uploaded.name,
-              driveWebViewLink: viewLink,
-            }
-          : prev,
-      );
-    } catch (err) {
-      if (err instanceof DriveAuthError) onTokenExpired();
-      setError(
-        err instanceof Error ? err.message : 'Gagal mengunggah berkas ke Google Drive.',
-      );
-    } finally {
-      setUploadingDrive(false);
     }
   };
 
@@ -261,59 +182,6 @@ export function IssueLetterModal({
                   {copied ? 'Nomor Disalin' : 'Salin Nomor Surat'}
                 </button>
               </div>
-            </div>
-
-            {error && (
-              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-800">
-                {error}
-              </div>
-            )}
-
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
-              <div className="flex items-center gap-2">
-                <HardDrive className="w-4 h-4 text-emerald-700" />
-                <p className="text-xs font-semibold text-slate-800">
-                  Simpan Berkas Surat ke Google Drive (Opsional)
-                </p>
-              </div>
-              {issuedResult.driveWebViewLink ? (
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs text-slate-700 break-all">
-                    Tersimpan: <strong>{issuedResult.driveFileName}</strong>
-                  </p>
-                  <a
-                    href={issuedResult.driveWebViewLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-white border border-emerald-200 hover:bg-emerald-50 rounded-lg whitespace-nowrap shrink-0"
-                  >
-                    Buka di Drive
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              ) : (
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-xs text-slate-600">
-                    Unggah file surat (PDF/Word) ke folder arsip Google Drive Anda sekarang atau nanti melalui detail surat.
-                  </p>
-                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg cursor-pointer whitespace-nowrap shrink-0">
-                    <FileUp className="w-3.5 h-3.5" />
-                    <span>
-                      {uploadingDrive
-                        ? 'Mengunggah...'
-                        : driveToken
-                          ? 'Pilih & Unggah Berkas'
-                          : 'Hubungkan Drive & Unggah'}
-                    </span>
-                    <input
-                      type="file"
-                      disabled={uploadingDrive}
-                      onChange={(e) => void handleUploadIssuedToDrive(e)}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-              )}
             </div>
 
             <div className="flex items-center justify-between pt-2">

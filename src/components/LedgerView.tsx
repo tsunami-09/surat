@@ -4,7 +4,6 @@ import {
   Check,
   Copy,
   Download,
-  ExternalLink,
   FilePlus2,
   Search,
 } from 'lucide-react';
@@ -349,7 +348,7 @@ export function LedgerView({
             </p>
             <p className="text-sm text-slate-500 mt-1 max-w-md mx-auto">
               {letters.length === 0
-                ? 'Setiap hari kerja memiliki alokasi 15 nomor surat mulai 1 Januari hingga 31 Desember. Ambil nomor surat pertama untuk memulai.'
+                ? `Setiap hari kerja memiliki alokasi ${DAILY_QUOTA} nomor surat mulai 1 Januari hingga 31 Desember. Ambil nomor surat pertama untuk memulai.`
                 : 'Ubah kata kunci pencarian atau pilih rentang bulan dan klasifikasi lainnya.'}
             </p>
             {letters.length === 0 && (
@@ -429,22 +428,8 @@ export function LedgerView({
                       >
                         {letter.subject}
                       </p>
-                      <p className="text-xs text-slate-500 mt-0.5 flex flex-wrap items-center gap-2">
-                        <span>
-                          {letter.category} · Kode {letter.classificationCode}
-                        </span>
-                        {letter.driveWebViewLink && (
-                          <a
-                            href={letter.driveWebViewLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-800 font-medium underline underline-offset-2"
-                          >
-                            Arsip Drive
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                        )}
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {letter.category} · Kode {letter.classificationCode}
                       </p>
                     </td>
                     <td className="py-3 px-4 text-xs text-slate-700 align-top max-w-[200px]">

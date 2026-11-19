@@ -204,7 +204,7 @@ export function previewNextLetterNumber(params: {
   if (usedCount >= DAILY_QUOTA) {
     return {
       canIssue: false,
-      blockedReason: `Kuota 15 nomor untuk tanggal ${formatTanggalIndonesia(letterDate)} (No. ${formatSequenceCode(alloc.startSeq, 0, settings.padDigits)}–${formatSequenceCode(alloc.endSeq, 0, settings.padDigits)}) sudah habis. Silakan pilih tanggal hari kerja lain.`,
+      blockedReason: `Kuota ${DAILY_QUOTA} nomor untuk tanggal ${formatTanggalIndonesia(letterDate)} (No. ${formatSequenceCode(alloc.startSeq, 0, settings.padDigits)}–${formatSequenceCode(alloc.endSeq, 0, settings.padDigits)}) sudah habis. Silakan pilih tanggal hari kerja lain.`,
       dayStatus: 'hari_kerja',
       holidayName: null,
       startSeq: alloc.startSeq,
