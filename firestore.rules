@@ -354,6 +354,9 @@ service cloud.firestore {
       allow create: if isVerifiedUser() && isNotRevoked() && isValidId(dateId) &&
         isValidDailyCounter(incoming()) &&
         dateId == incoming().date &&
+        incoming().year == 2027 &&
+        incoming().date >= '2027-01-02' &&
+        incoming().date <= '2027-12-31' &&
         incoming().endSeq == (incoming().startSeq + 19) &&
         incoming().usedCount == 1 &&
         incoming().updatedAt == request.time;
@@ -400,6 +403,9 @@ service cloud.firestore {
       allow create: if isVerifiedUser() && isNotRevoked() && isValidId(letterId) &&
         isValidOutgoingLetter(incoming()) &&
         incoming().createdByUid == request.auth.uid &&
+        incoming().year == 2027 &&
+        incoming().letterDate >= '2027-01-02' &&
+        incoming().letterDate <= '2027-12-31' &&
         incoming().status == 'terbit' &&
         incoming().cancelReason == '' &&
         incoming().subNumber == 0 &&

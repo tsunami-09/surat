@@ -1,21 +1,22 @@
 import { useMemo, useState } from 'react';
 import { INDONESIAN_MONTHS } from '../lib/numbering';
-import type { ClassificationCode, OutgoingLetter } from '../types/letter';
+import { ACTIVE_PERIOD_YEAR, type ClassificationCode, type OutgoingLetter } from '../types/letter';
+import { SpreadsheetRecapSection } from './SpreadsheetRecapSection';
 
 interface StatsViewProps {
   letters: OutgoingLetter[];
   classifications: ClassificationCode[];
+  onSelectLetter?: (letter: OutgoingLetter) => void;
 }
 
-export function StatsView({ letters, classifications }: StatsViewProps) {
-  const currentYear = new Date().getFullYear();
-  const [selectedYear, setSelectedYear] = useState(currentYear);
+export function StatsView({ letters, classifications, onSelectLetter }: StatsViewProps) {
+  const [selectedYear, setSelectedYear] = useState(ACTIVE_PERIOD_YEAR);
 
   const availableYears = useMemo(() => {
-    const years = new Set<number>([currentYear]);
+    const years = new Set<number>([ACTIVE_PERIOD_YEAR]);
     for (const l of letters) years.add(l.year);
     return Array.from(years).sort((a, b) => b - a);
-  }, [letters, currentYear]);
+  }, [letters]);
 
   const yearLetters = useMemo(
     () => letters.filter((l) => l.year === selectedYear),
@@ -88,14 +89,15 @@ export function StatsView({ letters, classifications }: StatsViewProps) {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">
-            Statistik & Rekapitulasi Persuratan
+            Rekap Spreadsheet & Statistik Surat Keluar
           </h2>
           <p className="text-sm text-slate-500">
-            Ringkasan volume surat keluar per bulan, klasifikasi, jenis naskah, dan subbagian.
+            Rekapitulasi surat keluar dalam format spreadsheet serta ringkasan volume per bulan, klasifikasi, dan subbagian.
           </p>
         </div>
 
         <select
+          aria-label="Pilih Tahun Rekap"
           value={selectedYear}
           onChange={(e) => setSelectedYear(Number(e.target.value))}
           className="px-3.5 py-2 text-sm font-medium border border-slate-300 rounded-lg bg-white text-slate-800 tabular-nums"
@@ -107,6 +109,13 @@ export function StatsView({ letters, classifications }: StatsViewProps) {
           ))}
         </select>
       </div>
+
+      {/* Spreadsheet Rekap Surat Keluar */}
+      <SpreadsheetRecapSection
+        letters={yearLetters}
+        selectedYear={selectedYear}
+        onSelectLetter={onSelectLetter}
+      />
 
       {/* Monthly Bar Chart */}
       <div className="bg-white border border-slate-200 rounded-xl p-6">

@@ -18,9 +18,11 @@ import {
   handleFirestoreError,
   OperationType,
 } from '../lib/firebase';
-import { getDayAllocation } from '../lib/calendar';
+import { getDayAllocation, isWithinActivePeriod } from '../lib/calendar';
 import { buildSortKey, formatFullLetterNumber } from '../lib/numbering';
 import {
+  ACTIVE_PERIOD_END,
+  ACTIVE_PERIOD_START,
   BLUEPRINT_LIMITS,
   DAILY_QUOTA,
   type CalendarHoliday,
@@ -510,6 +512,12 @@ export async function issueOutgoingLetter(params: {
 
   if (!BLUEPRINT_LIMITS.datePattern.test(letterDate)) {
     throw new Error('Format tanggal surat harus YYYY-MM-DD.');
+  }
+
+  if (!isWithinActivePeriod(letterDate)) {
+    throw new Error(
+      `Periode penomoran surat berlaku mulai ${ACTIVE_PERIOD_START} (2 Januari 2027) hingga ${ACTIVE_PERIOD_END} (31 Desember 2027).`,
+    );
   }
 
   const alloc = getDayAllocation(letterDate, customHolidays);

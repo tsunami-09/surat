@@ -62,7 +62,7 @@ type ActiveTab = 'ledger' | 'calendar' | 'stats' | 'settings' | 'staff';
 const NAV_ITEMS: { id: ActiveTab; label: string; icon: typeof FileSpreadsheet }[] = [
   { id: 'ledger', label: 'Buku Agenda Surat', icon: FileSpreadsheet },
   { id: 'calendar', label: 'Kalender & Alokasi', icon: CalendarDays },
-  { id: 'stats', label: 'Statistik & Rekap', icon: BarChart3 },
+  { id: 'stats', label: 'Rekap Spreadsheet', icon: BarChart3 },
   { id: 'settings', label: 'Klasifikasi & Format', icon: SlidersHorizontal },
   { id: 'staff', label: 'Daftar Staf', icon: Users },
 ];
@@ -488,7 +488,11 @@ export default function App() {
           )}
 
           {activeTab === 'stats' && (
-            <StatsView letters={letters} classifications={classifications} />
+            <StatsView
+              letters={letters}
+              classifications={classifications}
+              onSelectLetter={(l) => setSelectedLetterId(l.id)}
+            />
           )}
 
           {activeTab === 'settings' && (

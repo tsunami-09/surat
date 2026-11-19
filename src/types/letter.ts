@@ -27,6 +27,10 @@ export type DayAllocationStatus =
 
 export const DAILY_QUOTA = 20;
 
+export const ACTIVE_PERIOD_YEAR = 2027;
+export const ACTIVE_PERIOD_START = '2027-01-02';
+export const ACTIVE_PERIOD_END = '2027-12-31';
+
 export const BLUEPRINT_LIMITS = {
   idPattern: /^[a-zA-Z0-9_\-]+$/,
   unitCodePattern: /^[A-Za-z0-9.\-/]+$/,

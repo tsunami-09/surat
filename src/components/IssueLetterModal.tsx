@@ -8,6 +8,8 @@ import {
   previewNextLetterNumber,
 } from '../lib/numbering';
 import {
+  ACTIVE_PERIOD_END,
+  ACTIVE_PERIOD_START,
   DAILY_QUOTA,
   LETTER_CATEGORIES,
   type CalendarHoliday,
@@ -53,7 +55,9 @@ export function IssueLetterModal({
   );
 
   const [letterDate, setLetterDate] = useState(
-    initialDate || findNearestWorkingDate(getTodayIsoDate(), customHolidays),
+    initialDate && initialDate >= ACTIVE_PERIOD_START && initialDate <= ACTIVE_PERIOD_END
+      ? initialDate
+      : findNearestWorkingDate(getTodayIsoDate(), customHolidays),
   );
   const [classificationCode, setClassificationCode] = useState(
     activeClassifications[0]?.code || '000',
@@ -147,7 +151,7 @@ export function IssueLetterModal({
               {issuedResult ? 'Nomor Surat Berhasil Diterbitkan' : 'Ambil Nomor Surat Keluar'}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Batas maksimal {DAILY_QUOTA} nomor per hari kerja · {settings.institutionName}
+              Periode 2 Jan – 31 Des 2027 · Maks. {DAILY_QUOTA} nomor/hari kerja · {settings.institutionName}
             </p>
           </div>
           <button
@@ -224,7 +228,7 @@ export function IssueLetterModal({
                 </span>
                 {preview.canIssue && preview.startSeq !== null && preview.endSeq !== null ? (
                   <span className="text-xs font-mono font-semibold text-emerald-700 tabular-nums">
-                    Kuota Harian: {preview.usedCount}/{DAILY_QUOTA} terpakai (Sisa {preview.remainingQuota})
+                    Kuota Harian: {preview.usedCount}/{preview.usedCount + preview.remainingQuota} terpakai (Sisa {preview.remainingQuota})
                   </span>
                 ) : (
                   <span className="text-xs font-semibold text-amber-800">
@@ -285,6 +289,8 @@ export function IssueLetterModal({
                   <input
                     type="date"
                     required
+                    min={ACTIVE_PERIOD_START}
+                    max={ACTIVE_PERIOD_END}
                     value={letterDate}
                     onChange={(e) => setLetterDate(e.target.value)}
                     className="w-full pl-9 pr-3 py-2 text-sm font-mono tabular-nums border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-700"

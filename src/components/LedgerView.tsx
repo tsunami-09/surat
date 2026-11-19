@@ -5,17 +5,21 @@ import {
   Copy,
   Download,
   FilePlus2,
+  FileSpreadsheet,
   Search,
 } from 'lucide-react';
-import { buildYearSchedule, getDayAllocation } from '../lib/calendar';
+import { buildYearSchedule, findNearestWorkingDate, getDayAllocation, isWithinActivePeriod } from '../lib/calendar';
 import {
   exportLettersToCsv,
+  exportRecapToXlsx,
   formatSequenceCode,
   formatTanggalIndonesia,
   getTodayIsoDate,
   INDONESIAN_MONTHS,
 } from '../lib/numbering';
 import {
+  ACTIVE_PERIOD_START,
+  ACTIVE_PERIOD_YEAR,
   DAILY_QUOTA,
   type CalendarHoliday,
   type ClassificationCode,
@@ -51,26 +55,35 @@ export function LedgerView({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'terbit' | 'batal'>('all');
-  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
+  const [selectedYear, setSelectedYear] = useState<number>(ACTIVE_PERIOD_YEAR);
   const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const availableYears = useMemo(() => {
-    const years = new Set<number>([currentYear, currentYear + 1]);
+    const years = new Set<number>([ACTIVE_PERIOD_YEAR]);
     for (const l of letters) years.add(l.year);
     return Array.from(years).sort((a, b) => b - a);
-  }, [letters, currentYear]);
+  }, [letters]);
 
   const lettersInSelectedYear = useMemo(
     () => letters.filter((l) => l.year === selectedYear),
     [letters, selectedYear],
   );
 
+  const isTodayInPeriod = isWithinActivePeriod(todayIso);
+  const referenceIso = useMemo(
+    () =>
+      isTodayInPeriod
+        ? todayIso
+        : findNearestWorkingDate(ACTIVE_PERIOD_START, customHolidays),
+    [isTodayInPeriod, todayIso, customHolidays],
+  );
+
   const todayAlloc = useMemo(
-    () => getDayAllocation(todayIso, customHolidays),
-    [todayIso, customHolidays],
+    () => getDayAllocation(referenceIso, customHolidays),
+    [referenceIso, customHolidays],
   );
 
   const yearScheduleStats = useMemo(() => {
@@ -86,12 +99,18 @@ export function LedgerView({
   }, [selectedYear, customHolidays]);
 
   const stats = useMemo(() => {
-    const todayCounter = dailyCounters[todayIso];
-    const todayUsed = todayCounter?.usedCount ?? 0;
+    const refCounter = dailyCounters[referenceIso];
+    const todayUsed = refCounter?.usedCount ?? 0;
     const isTodayWorking = todayAlloc?.status === 'hari_kerja';
+    const effectiveStart = refCounter?.startSeq ?? todayAlloc?.startSeq ?? null;
+    const effectiveEnd = refCounter?.endSeq ?? todayAlloc?.endSeq ?? null;
+    const todayQuota =
+      effectiveStart !== null && effectiveEnd !== null
+        ? Math.max(1, effectiveEnd - effectiveStart + 1)
+        : DAILY_QUOTA;
     const nextTodayNum =
-      isTodayWorking && todayAlloc?.startSeq !== null && todayUsed < DAILY_QUOTA
-        ? formatSequenceCode(todayAlloc.startSeq + todayUsed, 0, settings.padDigits)
+      isTodayWorking && effectiveStart !== null && todayUsed < todayQuota
+        ? formatSequenceCode(effectiveStart + todayUsed, 0, settings.padDigits)
         : '—';
 
     const activeThisMonth = lettersInSelectedYear.filter(
@@ -103,9 +122,10 @@ export function LedgerView({
       isTodayWorking,
       todayHolidayName: todayAlloc?.holidayName ?? null,
       todayUsed,
+      todayQuota,
       todayRange:
-        isTodayWorking && todayAlloc?.startSeq !== null && todayAlloc?.endSeq !== null
-          ? `${formatSequenceCode(todayAlloc.startSeq, 0, settings.padDigits)}–${formatSequenceCode(todayAlloc.endSeq, 0, settings.padDigits)}`
+        isTodayWorking && effectiveStart !== null && effectiveEnd !== null
+          ? `${formatSequenceCode(effectiveStart, 0, settings.padDigits)}–${formatSequenceCode(effectiveEnd, 0, settings.padDigits)}`
           : 'Kosong (Libur)',
       nextTodayNum,
       activeThisMonth,
@@ -114,7 +134,7 @@ export function LedgerView({
     };
   }, [
     dailyCounters,
-    todayIso,
+    referenceIso,
     todayAlloc,
     lettersInSelectedYear,
     currentMonth,
@@ -164,9 +184,13 @@ export function LedgerView({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `agenda-surat-keluar-${selectedYear}.csv`;
+    a.download = `rekap-surat-keluar-${selectedYear}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleExportXlsx = () => {
+    exportRecapToXlsx(filteredLetters, `rekap-surat-keluar-${selectedYear}.xlsx`);
   };
 
   return (
@@ -175,10 +199,10 @@ export function LedgerView({
       <div className="bg-white border border-slate-200 rounded-xl grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
         <div className="p-5">
           <p className="text-xs font-medium text-slate-500">
-            Alokasi Hari Ini ({formatTanggalIndonesia(todayIso)})
+            {isTodayInPeriod ? 'Alokasi Hari Ini' : 'Alokasi Pembuka'} ({formatTanggalIndonesia(referenceIso)})
           </p>
           <p className="text-2xl font-mono font-semibold text-slate-900 tabular-nums mt-1.5">
-            {stats.isTodayWorking ? `${stats.todayUsed} / ${DAILY_QUOTA}` : 'Kosong'}
+            {stats.isTodayWorking ? `${stats.todayUsed} / ${stats.todayQuota}` : 'Kosong'}
           </p>
           <p className="text-xs text-slate-500 mt-1 tabular-nums">
             {stats.isTodayWorking
@@ -188,20 +212,22 @@ export function LedgerView({
         </div>
 
         <div className="p-5">
-          <p className="text-xs font-medium text-slate-500">Nomor Berikutnya Hari Ini</p>
+          <p className="text-xs font-medium text-slate-500">
+            {isTodayInPeriod ? 'Nomor Berikutnya Hari Ini' : 'Nomor Berikutnya (Periode 2027)'}
+          </p>
           <p className="text-2xl font-mono font-semibold text-slate-900 tabular-nums mt-1.5">
             {stats.nextTodayNum}
           </p>
           <p className="text-xs text-slate-500 mt-1">
             {stats.isTodayWorking
-              ? `Tersisa ${Math.max(0, DAILY_QUOTA - stats.todayUsed)} slot hari ini`
+              ? `Tersisa ${Math.max(0, stats.todayQuota - stats.todayUsed)} slot (${formatTanggalIndonesia(referenceIso)})`
               : 'Tidak ada nomor di hari libur'}
           </p>
         </div>
 
         <div className="p-5">
           <p className="text-xs font-medium text-slate-500">
-            Rentang Tahun {selectedYear} (1 Jan–31 Des)
+            Rentang Tahun {selectedYear} (2 Jan–31 Des)
           </p>
           <p className="text-2xl font-mono font-semibold text-slate-900 tabular-nums mt-1.5">
             001 – {yearScheduleStats.maxNumberInYear.toLocaleString('id-ID')}
@@ -323,6 +349,16 @@ export function LedgerView({
               <Download className="w-3.5 h-3.5" />
               Ekspor CSV
             </button>
+
+            <button
+              type="button"
+              onClick={handleExportXlsx}
+              disabled={filteredLetters.length === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              Ekspor Spreadsheet (.xlsx)
+            </button>
           </div>
         </div>
 
@@ -348,7 +384,7 @@ export function LedgerView({
             </p>
             <p className="text-sm text-slate-500 mt-1 max-w-md mx-auto">
               {letters.length === 0
-                ? `Setiap hari kerja memiliki alokasi ${DAILY_QUOTA} nomor surat mulai 1 Januari hingga 31 Desember. Ambil nomor surat pertama untuk memulai.`
+                ? `Setiap hari kerja memiliki alokasi ${DAILY_QUOTA} nomor surat mulai 2 Januari hingga 31 Desember ${ACTIVE_PERIOD_YEAR} (kosong pada Sabtu, Minggu, hari libur nasional, dan cuti bersama).`
                 : 'Ubah kata kunci pencarian atau pilih rentang bulan dan klasifikasi lainnya.'}
             </p>
             {letters.length === 0 && (

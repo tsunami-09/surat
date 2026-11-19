@@ -1,4 +1,7 @@
+import * as XLSX from 'xlsx';
 import {
+  ACTIVE_PERIOD_END,
+  ACTIVE_PERIOD_START,
   DAILY_QUOTA,
   type CalendarHoliday,
   type ClassificationCode,
@@ -10,6 +13,7 @@ import {
 import {
   findNearestWorkingDate,
   getDayAllocation,
+  isWithinActivePeriod,
 } from './calendar';
 
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
@@ -159,12 +163,28 @@ export function previewNextLetterNumber(params: {
   const alloc = getDayAllocation(letterDate, customHolidays);
   const nearestWorkingDate = findNearestWorkingDate(letterDate, customHolidays);
 
-  if (!alloc) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(letterDate)) {
     return {
       canIssue: false,
       blockedReason: 'Format tanggal tidak valid.',
       dayStatus: 'akhir_pekan',
       holidayName: null,
+      startSeq: null,
+      endSeq: null,
+      usedCount: 0,
+      remainingQuota: 0,
+      nextSequenceNumber: null,
+      fullNumber: null,
+      nearestWorkingDate,
+    };
+  }
+
+  if (!isWithinActivePeriod(letterDate) || !alloc) {
+    return {
+      canIssue: false,
+      blockedReason: `Periode penomoran surat berlaku mulai ${formatTanggalIndonesia(ACTIVE_PERIOD_START)} sampai dengan ${formatTanggalIndonesia(ACTIVE_PERIOD_END)}.`,
+      dayStatus: 'tanggal_merah',
+      holidayName: 'Di Luar Periode 2 Jan – 31 Des 2027',
       startSeq: null,
       endSeq: null,
       usedCount: 0,
@@ -198,17 +218,20 @@ export function previewNextLetterNumber(params: {
   }
 
   const counter = dailyCounters[letterDate];
+  const effectiveStart = counter?.startSeq ?? alloc.startSeq;
+  const effectiveEnd = counter?.endSeq ?? alloc.endSeq;
+  const effectiveQuota = Math.max(1, effectiveEnd - effectiveStart + 1);
   const usedCount = counter?.usedCount ?? 0;
-  const remainingQuota = Math.max(0, DAILY_QUOTA - usedCount);
+  const remainingQuota = Math.max(0, effectiveQuota - usedCount);
 
-  if (usedCount >= DAILY_QUOTA) {
+  if (usedCount >= effectiveQuota || usedCount >= DAILY_QUOTA) {
     return {
       canIssue: false,
-      blockedReason: `Kuota ${DAILY_QUOTA} nomor untuk tanggal ${formatTanggalIndonesia(letterDate)} (No. ${formatSequenceCode(alloc.startSeq, 0, settings.padDigits)}–${formatSequenceCode(alloc.endSeq, 0, settings.padDigits)}) sudah habis. Silakan pilih tanggal hari kerja lain.`,
+      blockedReason: `Kuota ${effectiveQuota} nomor untuk tanggal ${formatTanggalIndonesia(letterDate)} (No. ${formatSequenceCode(effectiveStart, 0, settings.padDigits)}–${formatSequenceCode(effectiveEnd, 0, settings.padDigits)}) sudah habis. Silakan pilih tanggal hari kerja lain.`,
       dayStatus: 'hari_kerja',
       holidayName: null,
-      startSeq: alloc.startSeq,
-      endSeq: alloc.endSeq,
+      startSeq: effectiveStart,
+      endSeq: effectiveEnd,
       usedCount,
       remainingQuota: 0,
       nextSequenceNumber: null,
@@ -220,7 +243,7 @@ export function previewNextLetterNumber(params: {
     };
   }
 
-  const nextSeq = alloc.startSeq + usedCount;
+  const nextSeq = effectiveStart + usedCount;
   const fullNumber = formatFullLetterNumber({
     classificationCode,
     sequenceNumber: nextSeq,
@@ -236,8 +259,8 @@ export function previewNextLetterNumber(params: {
     blockedReason: null,
     dayStatus: 'hari_kerja',
     holidayName: null,
-    startSeq: alloc.startSeq,
-    endSeq: alloc.endSeq,
+    startSeq: effectiveStart,
+    endSeq: effectiveEnd,
     usedCount,
     remainingQuota,
     nextSequenceNumber: nextSeq,
@@ -261,21 +284,28 @@ export function getTodayIsoDate(): string {
   return `${y}-${m}-${d}`;
 }
 
+export interface RecapSpreadsheetRow {
+  nomor: number;
+  tanggalSurat: string;
+  nomorSurat: string;
+  judulSurat: string;
+  instansiTujuan: string;
+  letter: OutgoingLetter;
+}
+
+export function buildRecapRows(letters: OutgoingLetter[]): RecapSpreadsheetRow[] {
+  return letters.map((letter, idx) => ({
+    nomor: idx + 1,
+    tanggalSurat: formatTanggalIndonesia(letter.letterDate),
+    nomorSurat: letter.fullNumber,
+    judulSurat: letter.subject,
+    instansiTujuan: letter.recipient,
+    letter,
+  }));
+}
+
 export function exportLettersToCsv(letters: OutgoingLetter[]): string {
-  const headers = [
-    'Nomor Urut',
-    'Nomor Surat Lengkap',
-    'Tanggal Surat',
-    'Kode Klasifikasi',
-    'Jenis Surat',
-    'Perihal',
-    'Tujuan / Penerima',
-    'Pengolah / Penandatangan',
-    'Dicatat Oleh',
-    'Unit / Bagian',
-    'Status',
-    'Keterangan / Alasan Batal',
-  ];
+  const headers = ['Nomor', 'Tanggal Surat', 'Nomor Surat', 'Judul Surat', 'Instansi Tujuan'];
 
   const escapeCsv = (val: string | number) => {
     const str = String(val ?? '');
@@ -285,22 +315,55 @@ export function exportLettersToCsv(letters: OutgoingLetter[]): string {
     return str;
   };
 
-  const rows = letters.map((l) => [
-    formatSequenceCode(l.sequenceNumber, l.subNumber, 3),
-    l.fullNumber,
-    l.letterDate,
-    l.classificationCode,
-    l.category,
-    l.subject,
-    l.recipient,
-    l.picName,
-    l.createdByName,
-    l.createdByDivision,
-    l.status === 'terbit' ? 'Terbit' : 'Dibatalkan',
-    l.status === 'batal' ? l.cancelReason : l.notes,
+  const rows = buildRecapRows(letters).map((r) => [
+    r.nomor,
+    r.tanggalSurat,
+    r.nomorSurat,
+    r.judulSurat,
+    r.instansiTujuan,
   ]);
 
   return [headers.map(escapeCsv).join(','), ...rows.map((r) => r.map(escapeCsv).join(','))].join(
     '\n',
   );
+}
+
+export function exportRecapToTsv(letters: OutgoingLetter[]): string {
+  const headers = ['Nomor', 'Tanggal Surat', 'Nomor Surat', 'Judul Surat', 'Instansi Tujuan'];
+  const cleanCell = (val: string | number) =>
+    String(val ?? '').replaceAll('\t', ' ').replaceAll('\n', ' ');
+
+  const rows = buildRecapRows(letters).map((r) => [
+    cleanCell(r.nomor),
+    cleanCell(r.tanggalSurat),
+    cleanCell(r.nomorSurat),
+    cleanCell(r.judulSurat),
+    cleanCell(r.instansiTujuan),
+  ]);
+
+  return [headers.join('\t'), ...rows.map((r) => r.join('\t'))].join('\n');
+}
+
+export function exportRecapToXlsx(letters: OutgoingLetter[], filename: string): void {
+  const headers = ['Nomor', 'Tanggal Surat', 'Nomor Surat', 'Judul Surat', 'Instansi Tujuan'];
+  const data = buildRecapRows(letters).map((r) => [
+    r.nomor,
+    r.tanggalSurat,
+    r.nomorSurat,
+    r.judulSurat,
+    r.instansiTujuan,
+  ]);
+
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...data]);
+  worksheet['!cols'] = [
+    { wch: 10 },
+    { wch: 22 },
+    { wch: 32 },
+    { wch: 52 },
+    { wch: 36 },
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Rekap Surat Keluar');
+  XLSX.writeFile(workbook, filename);
 }

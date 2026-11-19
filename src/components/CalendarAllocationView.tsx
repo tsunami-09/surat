@@ -12,6 +12,9 @@ import {
   INDONESIAN_MONTHS,
 } from '../lib/numbering';
 import {
+  ACTIVE_PERIOD_END,
+  ACTIVE_PERIOD_START,
+  ACTIVE_PERIOD_YEAR,
   DAILY_QUOTA,
   type CalendarHoliday,
   type DailyCounter,
@@ -47,10 +50,12 @@ export function CalendarAllocationView({
   const currentYear = Number(todayIso.slice(0, 4));
   const currentMonth = Number(todayIso.slice(5, 7));
 
-  const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [selectedMonth, setSelectedMonth] = useState<number | 'all'>(currentMonth);
+  const [selectedYear, setSelectedYear] = useState(ACTIVE_PERIOD_YEAR);
+  const [selectedMonth, setSelectedMonth] = useState<number | 'all'>(
+    currentYear === ACTIVE_PERIOD_YEAR ? currentMonth : 1,
+  );
 
-  const [holidayDate, setHolidayDate] = useState(`${currentYear}-01-01`);
+  const [holidayDate, setHolidayDate] = useState(ACTIVE_PERIOD_START);
   const [holidayKind, setHolidayKind] = useState<HolidayKind>('tanggal_merah');
   const [holidayName, setHolidayName] = useState('');
   const [savingHoliday, setSavingHoliday] = useState(false);
@@ -117,7 +122,7 @@ export function CalendarAllocationView({
             Kalender Alokasi Nomor Harian ({selectedYear})
           </h2>
           <p className="text-sm text-slate-500">
-            Alokasi tetap {DAILY_QUOTA} nomor per hari kerja mulai 1 Januari hingga 31 Desember. Nomor dikosongkan pada Sabtu, Minggu, tanggal merah, dan cuti bersama.
+            Alokasi tetap {DAILY_QUOTA} nomor per hari kerja mulai 2 Januari hingga 31 Desember {selectedYear}. Nomor dikosongkan pada Sabtu, Minggu, hari libur nasional, dan cuti bersama.
           </p>
         </div>
 
@@ -128,7 +133,7 @@ export function CalendarAllocationView({
             onChange={(e) => setSelectedYear(Number(e.target.value))}
             className="px-3.5 py-2 text-sm font-medium border border-slate-300 rounded-lg bg-white text-slate-800 tabular-nums"
           >
-            {[currentYear - 1, currentYear, currentYear + 1, currentYear + 2].map((yr) => (
+            {[ACTIVE_PERIOD_YEAR].map((yr) => (
               <option key={yr} value={yr}>
                 Tahun {yr}
               </option>
@@ -143,7 +148,7 @@ export function CalendarAllocationView({
             }
             className="px-3.5 py-2 text-sm font-medium border border-slate-300 rounded-lg bg-white text-slate-800"
           >
-            <option value="all">Setahun Penuh (1 Jan – 31 Des)</option>
+            <option value="all">Periode Penuh (2 Jan – 31 Des {selectedYear})</option>
             {INDONESIAN_MONTHS.map((m, idx) => (
               <option key={m} value={idx + 1}>
                 {m}
@@ -167,7 +172,7 @@ export function CalendarAllocationView({
           <p className="text-2xl font-mono font-semibold text-slate-900 tabular-nums mt-1.5">
             001 – {yearSummary.totalNumbers.toLocaleString('id-ID')}
           </p>
-          <p className="text-xs text-slate-500 mt-1">1 Januari s.d. 31 Desember {selectedYear}</p>
+          <p className="text-xs text-slate-500 mt-1">2 Januari s.d. 31 Desember {selectedYear}</p>
         </div>
         <div className="p-5">
           <p className="text-xs font-medium text-slate-500">Sabtu & Minggu (Kosong)</p>
@@ -324,6 +329,8 @@ export function CalendarAllocationView({
                 <input
                   type="date"
                   required
+                  min={ACTIVE_PERIOD_START}
+                  max={ACTIVE_PERIOD_END}
                   value={holidayDate}
                   onChange={(e) => setHolidayDate(e.target.value)}
                   className="px-2.5 py-1.5 text-xs font-mono border border-slate-300 rounded-lg bg-white"

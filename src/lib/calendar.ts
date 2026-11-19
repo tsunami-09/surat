@@ -1,4 +1,7 @@
 import {
+  ACTIVE_PERIOD_END,
+  ACTIVE_PERIOD_START,
+  ACTIVE_PERIOD_YEAR,
   DAILY_QUOTA,
   type CalendarHoliday,
   type DayScheduleEntry,
@@ -68,25 +71,33 @@ const BUILTIN_HOLIDAYS: Record<string, BuiltinHolidayDef> = {
   '2026-12-24': { name: 'Cuti Bersama Kelahiran Yesus Kristus', kind: 'cuti_bersama' },
   '2026-12-25': { name: 'Kelahiran Yesus Kristus (Natal)', kind: 'tanggal_merah' },
 
-  // 2027
+  // 2027 (SKB 3 Menteri: Hari Libur Nasional & Cuti Bersama)
   '2027-01-01': { name: 'Tahun Baru 2027 Masehi', kind: 'tanggal_merah' },
-  '2027-01-05': { name: 'Isra Mikraj Nabi Muhammad SAW', kind: 'tanggal_merah' },
+  '2027-01-05': { name: 'Isra Mikraj Nabi Muhammad SAW 1448 H', kind: 'tanggal_merah' },
+  '2027-02-05': { name: 'Cuti Bersama Tahun Baru Imlek 2578 Kongzili', kind: 'cuti_bersama' },
   '2027-02-06': { name: 'Tahun Baru Imlek 2578 Kongzili', kind: 'tanggal_merah' },
-  '2027-03-08': { name: 'Hari Suci Nyepi Tahun Baru Saka 1949', kind: 'tanggal_merah' },
+  '2027-03-08': { name: 'Hari Suci Nyepi (Tahun Baru Saka 1949)', kind: 'tanggal_merah' },
+  '2027-03-09': { name: 'Cuti Bersama Hari Raya Idulfitri 1448 H', kind: 'cuti_bersama' },
   '2027-03-10': { name: 'Hari Raya Idulfitri 1448 H', kind: 'tanggal_merah' },
   '2027-03-11': { name: 'Hari Raya Idulfitri 1448 H', kind: 'tanggal_merah' },
+  '2027-03-12': { name: 'Cuti Bersama Hari Raya Idulfitri 1448 H', kind: 'cuti_bersama' },
+  '2027-03-15': { name: 'Cuti Bersama Hari Raya Idulfitri 1448 H', kind: 'cuti_bersama' },
+  '2027-03-25': { name: 'Cuti Bersama Wafat Yesus Kristus', kind: 'cuti_bersama' },
   '2027-03-26': { name: 'Wafat Yesus Kristus', kind: 'tanggal_merah' },
   '2027-03-28': { name: 'Kebangkitan Yesus Kristus (Paskah)', kind: 'tanggal_merah' },
   '2027-05-01': { name: 'Hari Buruh Internasional', kind: 'tanggal_merah' },
   '2027-05-06': { name: 'Kenaikan Yesus Kristus', kind: 'tanggal_merah' },
   '2027-05-17': { name: 'Hari Raya Iduladha 1448 H', kind: 'tanggal_merah' },
+  '2027-05-18': { name: 'Cuti Bersama Hari Raya Iduladha 1448 H', kind: 'cuti_bersama' },
+  '2027-05-19': { name: 'Cuti Bersama Hari Raya Waisak 2571 BE', kind: 'cuti_bersama' },
   '2027-05-20': { name: 'Hari Raya Waisak 2571 BE', kind: 'tanggal_merah' },
   '2027-06-01': { name: 'Hari Lahir Pancasila', kind: 'tanggal_merah' },
   '2027-06-06': { name: '1 Muharam Tahun Baru Islam 1449 H', kind: 'tanggal_merah' },
-  '2027-08-15': { name: 'Maulid Nabi Muhammad SAW', kind: 'tanggal_merah' },
+  '2027-08-15': { name: 'Maulid Nabi Muhammad SAW 1449 H', kind: 'tanggal_merah' },
   '2027-08-17': { name: 'Hari Kemerdekaan Republik Indonesia', kind: 'tanggal_merah' },
+  '2027-12-24': { name: 'Cuti Bersama Kelahiran Yesus Kristus', kind: 'cuti_bersama' },
   '2027-12-25': { name: 'Kelahiran Yesus Kristus (Natal)', kind: 'tanggal_merah' },
-  '2027-12-26': { name: 'Isra Mikraj Nabi Muhammad SAW', kind: 'tanggal_merah' },
+  '2027-12-26': { name: 'Isra Mikraj Nabi Muhammad SAW 1449 H', kind: 'tanggal_merah' },
 };
 
 const FIXED_ANNUAL_HOLIDAYS: Record<string, BuiltinHolidayDef> = {
@@ -178,7 +189,13 @@ export function getMergedHolidaysForYear(
     }
   }
 
-  return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+  return Array.from(map.values())
+    .filter((item) =>
+      year === ACTIVE_PERIOD_YEAR
+        ? item.date >= ACTIVE_PERIOD_START && item.date <= ACTIVE_PERIOD_END
+        : true,
+    )
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export function buildYearSchedule(
@@ -186,7 +203,8 @@ export function buildYearSchedule(
   customHolidays: Record<string, CalendarHoliday>,
 ): DayScheduleEntry[] {
   const schedule: DayScheduleEntry[] = [];
-  const start = new Date(Date.UTC(year, 0, 1));
+  const start =
+    year === ACTIVE_PERIOD_YEAR ? new Date(Date.UTC(year, 0, 2)) : new Date(Date.UTC(year, 0, 1));
   const end = new Date(Date.UTC(year, 11, 31));
   let workingDayIndex = 0;
 
@@ -249,11 +267,16 @@ export function buildYearSchedule(
   return schedule;
 }
 
+export function isWithinActivePeriod(isoDate: string): boolean {
+  return isoDate >= ACTIVE_PERIOD_START && isoDate <= ACTIVE_PERIOD_END;
+}
+
 export function getDayAllocation(
   isoDate: string,
   customHolidays: Record<string, CalendarHoliday>,
 ): DayScheduleEntry | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
+  if (!isWithinActivePeriod(isoDate)) return null;
   const year = Number(isoDate.slice(0, 4));
   const schedule = buildYearSchedule(year, customHolidays);
   return schedule.find((entry) => entry.date === isoDate) ?? null;
@@ -263,14 +286,21 @@ export function findNearestWorkingDate(
   isoDate: string,
   customHolidays: Record<string, CalendarHoliday>,
 ): string {
-  const [y, m, d] = isoDate.split('-').map(Number);
+  const clampedStart =
+    isoDate < ACTIVE_PERIOD_START
+      ? ACTIVE_PERIOD_START
+      : isoDate > ACTIVE_PERIOD_END
+        ? ACTIVE_PERIOD_START
+        : isoDate;
+  const [y, m, d] = clampedStart.split('-').map(Number);
   const start = new Date(Date.UTC(y, m - 1, d));
-  for (let offset = 0; offset <= 30; offset += 1) {
+  for (let offset = 0; offset <= 365; offset += 1) {
     const candidate = formatIsoDateUtc(new Date(start.getTime() + offset * 86400000));
+    if (candidate > ACTIVE_PERIOD_END) break;
     const alloc = getDayAllocation(candidate, customHolidays);
     if (alloc && alloc.status === 'hari_kerja') {
       return candidate;
     }
   }
-  return isoDate;
+  return ACTIVE_PERIOD_START;
 }
