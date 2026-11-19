@@ -122,7 +122,7 @@ export function CalendarAllocationView({
             Kalender Alokasi Nomor Harian ({selectedYear})
           </h2>
           <p className="text-sm text-slate-500">
-            Alokasi tetap {DAILY_QUOTA} nomor per hari kerja mulai 2 Januari hingga 31 Desember {selectedYear}. Nomor dikosongkan pada Sabtu, Minggu, hari libur nasional, dan cuti bersama.
+            Alokasi {DAILY_QUOTA} nomor utama per hari kerja mulai 2 Januari hingga 31 Desember {selectedYear} (otomatis berlanjut .1, .2, dst. jika penuh). Nomor dikosongkan pada Sabtu, Minggu, hari libur nasional, dan cuti bersama.
           </p>
         </div>
 
@@ -219,8 +219,13 @@ export function CalendarAllocationView({
                   const isWorking = entry.status === 'hari_kerja';
                   const counter = dailyCounters[entry.date];
                   const used = counter?.usedCount ?? 0;
+                  const entryQuota =
+                    counter && counter.startSeq && counter.endSeq
+                      ? Math.max(1, counter.endSeq - counter.startSeq + 1)
+                      : DAILY_QUOTA;
+                  const overflowCount = Math.max(0, used - entryQuota);
                   const isToday = entry.date === todayIso;
-                  const isFull = isWorking && used >= DAILY_QUOTA;
+                  const isFull = isWorking && used >= entryQuota;
 
                   return (
                     <tr
@@ -257,7 +262,8 @@ export function CalendarAllocationView({
                       <td className="py-2.5 px-4 font-mono text-xs tabular-nums whitespace-nowrap">
                         {isWorking ? (
                           <span className={isFull ? 'text-amber-700 font-semibold' : 'text-slate-700'}>
-                            {used} / {DAILY_QUOTA}
+                            {Math.min(used, entryQuota)} / {entryQuota}
+                            {overflowCount > 0 ? ` (+${overflowCount})` : ''}
                           </span>
                         ) : (
                           <span className="text-slate-400">—</span>
@@ -267,6 +273,11 @@ export function CalendarAllocationView({
                         {isWorking ? (
                           <span className="text-emerald-700 font-medium">
                             Hari Kerja #{entry.workingDayIndex}
+                            {isFull && (
+                              <span className="ml-1.5 text-amber-700">
+                                · Lanjut .{overflowCount + 1}
+                              </span>
+                            )}
                           </span>
                         ) : entry.status === 'akhir_pekan' ? (
                           <span className="text-slate-500">{entry.holidayName}</span>
@@ -281,18 +292,19 @@ export function CalendarAllocationView({
                         )}
                       </td>
                       <td className="py-2.5 px-4 text-right whitespace-nowrap">
-                        {isWorking && !isFull && (
+                        {isWorking && (
                           <button
                             type="button"
                             onClick={() => onIssueForDate(entry.date)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 border border-emerald-200 rounded-md transition-colors cursor-pointer"
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                              isFull
+                                ? 'text-amber-800 hover:bg-amber-50 border border-amber-300'
+                                : 'text-emerald-700 hover:bg-emerald-50 border border-emerald-200'
+                            }`}
                           >
                             <FilePlus2 className="w-3 h-3" />
-                            Ambil Nomor
+                            {isFull ? `Ambil (.${overflowCount + 1})` : 'Ambil Nomor'}
                           </button>
-                        )}
-                        {isFull && (
-                          <span className="text-xs text-amber-700 font-medium">Kuota Penuh</span>
                         )}
                       </td>
                     </tr>

@@ -184,6 +184,8 @@ export interface NumberPreviewResult {
   usedCount: number;
   remainingQuota: number;
   nextSequenceNumber: number | null;
+  nextSubNumber: number | null;
+  isOverflow: boolean;
   fullNumber: string | null;
   nearestWorkingDate: string;
 }

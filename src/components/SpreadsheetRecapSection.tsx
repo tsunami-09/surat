@@ -47,8 +47,11 @@ export function SpreadsheetRecapSection({
 
     return [...list].sort((a, b) => {
       const seqDiff = a.sequenceNumber - b.sequenceNumber;
-      const cmp = seqDiff !== 0 ? seqDiff : a.letterDate.localeCompare(b.letterDate);
-      return sortOrder === 'asc' ? cmp : -cmp;
+      if (seqDiff !== 0) return sortOrder === 'asc' ? seqDiff : -seqDiff;
+      const subDiff = a.subNumber - b.subNumber;
+      if (subDiff !== 0) return sortOrder === 'asc' ? subDiff : -subDiff;
+      const dateCmp = a.letterDate.localeCompare(b.letterDate);
+      return sortOrder === 'asc' ? dateCmp : -dateCmp;
     });
   }, [letters, searchQuery, statusFilter, selectedMonth, sortOrder]);
 

@@ -240,7 +240,7 @@
     },
     "DailyCounter": {
       "title": "DailyCounter",
-      "description": "Atomic daily working-day quota counter (max 20 numbers per working day).",
+      "description": "Atomic daily working-day counter (20 regular numbers per working day plus .1, .2, ... overflow suffixes).",
       "type": "object",
       "properties": {
         "date": {
@@ -445,7 +445,7 @@
     },
     "/daily_counters/{dateId}": {
       "schema": { "$ref": "#/entities/DailyCounter" },
-      "description": "Atomic daily 20-number quota tracker per working day."
+      "description": "Atomic daily 20-number quota and .1/.2 overflow tracker per working day."
     },
     "/calendar_holidays/{dateId}": {
       "schema": { "$ref": "#/entities/CalendarHoliday" },

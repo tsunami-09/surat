@@ -105,14 +105,7 @@ export function toRomanMonth(month: number): string {
 
 export function subNumberToSuffix(subNumber: number): string {
   if (subNumber <= 0) return '';
-  let n = subNumber;
-  let result = '';
-  while (n > 0) {
-    n -= 1;
-    result = String.fromCharCode(97 + (n % 26)) + result;
-    n = Math.floor(n / 26);
-  }
-  return `.${result}`;
+  return `.${subNumber}`;
 }
 
 export function formatSequenceCode(
@@ -147,9 +140,13 @@ export function formatFullLetterNumber(params: {
     .replaceAll('{tahun}', String(year));
 }
 
-export function buildSortKey(letterDate: string, sequenceNumber: number): string {
+export function buildSortKey(
+  letterDate: string,
+  sequenceNumber: number,
+  subNumber = 0,
+): string {
   const year = letterDate.slice(0, 4);
-  return `${year}_${String(sequenceNumber).padStart(6, '0')}_${letterDate}`;
+  return `${year}_${String(sequenceNumber).padStart(6, '0')}_${String(subNumber).padStart(4, '0')}_${letterDate}`;
 }
 
 export function previewNextLetterNumber(params: {
@@ -174,6 +171,8 @@ export function previewNextLetterNumber(params: {
       usedCount: 0,
       remainingQuota: 0,
       nextSequenceNumber: null,
+      nextSubNumber: null,
+      isOverflow: false,
       fullNumber: null,
       nearestWorkingDate,
     };
@@ -190,6 +189,8 @@ export function previewNextLetterNumber(params: {
       usedCount: 0,
       remainingQuota: 0,
       nextSequenceNumber: null,
+      nextSubNumber: null,
+      isOverflow: false,
       fullNumber: null,
       nearestWorkingDate,
     };
@@ -212,6 +213,8 @@ export function previewNextLetterNumber(params: {
       usedCount: 0,
       remainingQuota: 0,
       nextSequenceNumber: null,
+      nextSubNumber: null,
+      isOverflow: false,
       fullNumber: null,
       nearestWorkingDate,
     };
@@ -224,30 +227,14 @@ export function previewNextLetterNumber(params: {
   const usedCount = counter?.usedCount ?? 0;
   const remainingQuota = Math.max(0, effectiveQuota - usedCount);
 
-  if (usedCount >= effectiveQuota || usedCount >= DAILY_QUOTA) {
-    return {
-      canIssue: false,
-      blockedReason: `Kuota ${effectiveQuota} nomor untuk tanggal ${formatTanggalIndonesia(letterDate)} (No. ${formatSequenceCode(effectiveStart, 0, settings.padDigits)}–${formatSequenceCode(effectiveEnd, 0, settings.padDigits)}) sudah habis. Silakan pilih tanggal hari kerja lain.`,
-      dayStatus: 'hari_kerja',
-      holidayName: null,
-      startSeq: effectiveStart,
-      endSeq: effectiveEnd,
-      usedCount,
-      remainingQuota: 0,
-      nextSequenceNumber: null,
-      fullNumber: null,
-      nearestWorkingDate: findNearestWorkingDate(
-        `${letterDate.slice(0, 8)}${String(Number(letterDate.slice(8, 10)) + 1).padStart(2, '0')}`,
-        customHolidays,
-      ),
-    };
-  }
+  const isOverflow = usedCount >= effectiveQuota || usedCount >= DAILY_QUOTA;
+  const nextSeq = isOverflow ? effectiveEnd : effectiveStart + usedCount;
+  const nextSub = isOverflow ? Math.max(1, usedCount - effectiveQuota + 1) : 0;
 
-  const nextSeq = effectiveStart + usedCount;
   const fullNumber = formatFullLetterNumber({
     classificationCode,
     sequenceNumber: nextSeq,
-    subNumber: 0,
+    subNumber: nextSub,
     unitCode: settings.unitCode,
     month: alloc.month,
     year: alloc.year,
@@ -264,6 +251,8 @@ export function previewNextLetterNumber(params: {
     usedCount,
     remainingQuota,
     nextSequenceNumber: nextSeq,
+    nextSubNumber: nextSub,
+    isOverflow,
     fullNumber,
     nearestWorkingDate: letterDate,
   };

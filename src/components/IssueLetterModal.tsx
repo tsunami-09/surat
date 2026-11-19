@@ -151,7 +151,7 @@ export function IssueLetterModal({
               {issuedResult ? 'Nomor Surat Berhasil Diterbitkan' : 'Ambil Nomor Surat Keluar'}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Periode 2 Jan – 31 Des 2027 · Maks. {DAILY_QUOTA} nomor/hari kerja · {settings.institutionName}
+              Periode 2 Jan – 31 Des 2027 · {DAILY_QUOTA} nomor utama/hari (penambahan .1, .2 dst. jika penuh)
             </p>
           </div>
           <button
@@ -227,8 +227,14 @@ export function IssueLetterModal({
                     : 'Tanggal Tidak Tersedia untuk Penomoran'}
                 </span>
                 {preview.canIssue && preview.startSeq !== null && preview.endSeq !== null ? (
-                  <span className="text-xs font-mono font-semibold text-emerald-700 tabular-nums">
-                    Kuota Harian: {preview.usedCount}/{preview.usedCount + preview.remainingQuota} terpakai (Sisa {preview.remainingQuota})
+                  <span
+                    className={`text-xs font-mono font-semibold tabular-nums ${
+                      preview.isOverflow ? 'text-amber-800' : 'text-emerald-700'
+                    }`}
+                  >
+                    {preview.isOverflow
+                      ? `Kuota Utama Penuh · Tambahan .${preview.nextSubNumber}`
+                      : `Kuota Harian: ${preview.usedCount}/${preview.usedCount + preview.remainingQuota} terpakai (Sisa ${preview.remainingQuota})`}
                   </span>
                 ) : (
                   <span className="text-xs font-semibold text-amber-800">
@@ -245,12 +251,24 @@ export function IssueLetterModal({
                   <div className="flex items-start gap-2 mt-2 text-xs text-slate-600">
                     <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
                     <span className="tabular-nums">
-                      Alokasi tanggal {formatTanggalIndonesia(letterDate)}:{' '}
-                      <strong>
-                        No. {formatSequenceCode(preview.startSeq!, 0, settings.padDigits)} –{' '}
-                        {formatSequenceCode(preview.endSeq!, 0, settings.padDigits)}
-                      </strong>{' '}
-                      (maks. {DAILY_QUOTA} nomor/hari kerja).
+                      {preview.isOverflow ? (
+                        <>
+                          Kuota utama tanggal {formatTanggalIndonesia(letterDate)} (No.{' '}
+                          {formatSequenceCode(preview.startSeq!, 0, settings.padDigits)}–
+                          {formatSequenceCode(preview.endSeq!, 0, settings.padDigits)}) sudah penuh.
+                          Sistem otomatis melanjutkan dengan penambahan{' '}
+                          <strong>.{preview.nextSubNumber}</strong>.
+                        </>
+                      ) : (
+                        <>
+                          Alokasi tanggal {formatTanggalIndonesia(letterDate)}:{' '}
+                          <strong>
+                            No. {formatSequenceCode(preview.startSeq!, 0, settings.padDigits)} –{' '}
+                            {formatSequenceCode(preview.endSeq!, 0, settings.padDigits)}
+                          </strong>{' '}
+                          ({DAILY_QUOTA} nomor utama; jika penuh otomatis berlanjut .1, .2, dst.).
+                        </>
+                      )}
                     </span>
                   </div>
                 </>

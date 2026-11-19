@@ -108,9 +108,14 @@ export function LedgerView({
       effectiveStart !== null && effectiveEnd !== null
         ? Math.max(1, effectiveEnd - effectiveStart + 1)
         : DAILY_QUOTA;
+    const isOverflow = isTodayWorking && todayUsed >= todayQuota;
+    const overflowCount = Math.max(0, todayUsed - todayQuota);
+    const nextSub = isOverflow ? overflowCount + 1 : 0;
     const nextTodayNum =
-      isTodayWorking && effectiveStart !== null && todayUsed < todayQuota
-        ? formatSequenceCode(effectiveStart + todayUsed, 0, settings.padDigits)
+      isTodayWorking && effectiveStart !== null && effectiveEnd !== null
+        ? isOverflow
+          ? formatSequenceCode(effectiveEnd, nextSub, settings.padDigits)
+          : formatSequenceCode(effectiveStart + todayUsed, 0, settings.padDigits)
         : '—';
 
     const activeThisMonth = lettersInSelectedYear.filter(
@@ -123,6 +128,9 @@ export function LedgerView({
       todayHolidayName: todayAlloc?.holidayName ?? null,
       todayUsed,
       todayQuota,
+      isOverflow,
+      overflowCount,
+      nextSub,
       todayRange:
         isTodayWorking && effectiveStart !== null && effectiveEnd !== null
           ? `${formatSequenceCode(effectiveStart, 0, settings.padDigits)}–${formatSequenceCode(effectiveEnd, 0, settings.padDigits)}`
@@ -156,8 +164,11 @@ export function LedgerView({
 
     return [...list].sort((a, b) => {
       const seqDiff = a.sequenceNumber - b.sequenceNumber;
-      const cmp = seqDiff !== 0 ? seqDiff : a.letterDate.localeCompare(b.letterDate);
-      return sortOrder === 'asc' ? cmp : -cmp;
+      if (seqDiff !== 0) return sortOrder === 'asc' ? seqDiff : -seqDiff;
+      const subDiff = a.subNumber - b.subNumber;
+      if (subDiff !== 0) return sortOrder === 'asc' ? subDiff : -subDiff;
+      const dateCmp = a.letterDate.localeCompare(b.letterDate);
+      return sortOrder === 'asc' ? dateCmp : -dateCmp;
     });
   }, [
     lettersInSelectedYear,
@@ -202,7 +213,11 @@ export function LedgerView({
             {isTodayInPeriod ? 'Alokasi Hari Ini' : 'Alokasi Pembuka'} ({formatTanggalIndonesia(referenceIso)})
           </p>
           <p className="text-2xl font-mono font-semibold text-slate-900 tabular-nums mt-1.5">
-            {stats.isTodayWorking ? `${stats.todayUsed} / ${stats.todayQuota}` : 'Kosong'}
+            {stats.isTodayWorking
+              ? `${Math.min(stats.todayUsed, stats.todayQuota)} / ${stats.todayQuota}${
+                  stats.overflowCount > 0 ? ` (+${stats.overflowCount})` : ''
+                }`
+              : 'Kosong'}
           </p>
           <p className="text-xs text-slate-500 mt-1 tabular-nums">
             {stats.isTodayWorking
@@ -220,7 +235,9 @@ export function LedgerView({
           </p>
           <p className="text-xs text-slate-500 mt-1">
             {stats.isTodayWorking
-              ? `Tersisa ${Math.max(0, stats.todayQuota - stats.todayUsed)} slot (${formatTanggalIndonesia(referenceIso)})`
+              ? stats.isOverflow
+                ? `Kuota penuh · lanjut penambahan .${stats.nextSub}`
+                : `Tersisa ${Math.max(0, stats.todayQuota - stats.todayUsed)} slot (${formatTanggalIndonesia(referenceIso)})`
               : 'Tidak ada nomor di hari libur'}
           </p>
         </div>

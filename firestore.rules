@@ -153,8 +153,19 @@ service cloud.firestore {
         data.year is int && data.year >= 2000 && data.year <= 2100 &&
         data.startSeq is int && data.startSeq >= 1 && data.startSeq <= 999999 &&
         data.endSeq is int && (data.endSeq == (data.startSeq + 19) || data.endSeq == (data.startSeq + 14)) &&
-        data.usedCount is int && data.usedCount >= 1 && data.usedCount <= 20 &&
+        data.usedCount is int && data.usedCount >= 1 && data.usedCount <= 1000 &&
         data.updatedAt is timestamp;
+    }
+
+    function isValidLetterSequenceForCounter(letter, counter) {
+      return (
+        (counter.usedCount <= (counter.endSeq - counter.startSeq + 1) &&
+          letter.subNumber == 0 &&
+          letter.sequenceNumber == (counter.startSeq + counter.usedCount - 1)) ||
+        (counter.usedCount > (counter.endSeq - counter.startSeq + 1) &&
+          letter.sequenceNumber == counter.endSeq &&
+          letter.subNumber == (counter.usedCount - (counter.endSeq - counter.startSeq + 1)))
+      );
     }
 
     function isValidCalendarHoliday(data) {
@@ -367,7 +378,7 @@ service cloud.firestore {
         incoming().startSeq == existing().startSeq &&
         incoming().endSeq == existing().endSeq &&
         incoming().usedCount == (existing().usedCount + 1) &&
-        incoming().usedCount <= 20 &&
+        incoming().usedCount <= 1000 &&
         incoming().updatedAt == request.time &&
         incoming().diff(existing()).affectedKeys().hasOnly([
           'usedCount', 'updatedAt'
@@ -408,12 +419,13 @@ service cloud.firestore {
         incoming().letterDate <= '2027-12-31' &&
         incoming().status == 'terbit' &&
         incoming().cancelReason == '' &&
-        incoming().subNumber == 0 &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time &&
         existsAfter(/databases/$(database)/documents/daily_counters/$(incoming().letterDate)) &&
-        incoming().sequenceNumber >= getAfter(/databases/$(database)/documents/daily_counters/$(incoming().letterDate)).data.startSeq &&
-        incoming().sequenceNumber <= getAfter(/databases/$(database)/documents/daily_counters/$(incoming().letterDate)).data.endSeq;
+        isValidLetterSequenceForCounter(
+          incoming(),
+          getAfter(/databases/$(database)/documents/daily_counters/$(incoming().letterDate)).data
+        );
       allow update: if isVerifiedUser() && isNotRevoked() && isValidId(letterId) &&
         isValidOutgoingLetter(incoming()) &&
         incoming().createdByUid == existing().createdByUid &&

@@ -24,7 +24,6 @@ import {
   ACTIVE_PERIOD_END,
   ACTIVE_PERIOD_START,
   BLUEPRINT_LIMITS,
-  DAILY_QUOTA,
   type CalendarHoliday,
   type ClassificationCode,
   type DailyCounter,
@@ -456,6 +455,9 @@ export function subscribeOutgoingLetters(
           if (a.sequenceNumber !== b.sequenceNumber) {
             return a.sequenceNumber - b.sequenceNumber;
           }
+          if (a.subNumber !== b.subNumber) {
+            return a.subNumber - b.subNumber;
+          }
           return a.letterDate.localeCompare(b.letterDate);
         });
       onData(items);
@@ -558,19 +560,17 @@ export async function issueOutgoingLetter(params: {
       const existingData = counterSnap.exists() ? (counterSnap.data() as DailyCounter) : null;
       const usedCount = existingData?.usedCount ?? 0;
 
-      if (usedCount >= DAILY_QUOTA) {
-        throw new Error(
-          `Kuota maksimal ${DAILY_QUOTA} nomor untuk tanggal ${letterDate} sudah terpenuhi.`,
-        );
-      }
-
       const effectiveStart = existingData?.startSeq ?? startSeq;
       const effectiveEnd = existingData?.endSeq ?? endSeq;
-      const sequenceNumber = effectiveStart + usedCount;
+      const effectiveQuota = Math.max(1, effectiveEnd - effectiveStart + 1);
 
-      if (sequenceNumber > effectiveEnd) {
+      const isOverflow = usedCount >= effectiveQuota;
+      const sequenceNumber = isOverflow ? effectiveEnd : effectiveStart + usedCount;
+      const subNumber = isOverflow ? usedCount - effectiveQuota + 1 : 0;
+
+      if (usedCount >= 1000) {
         throw new Error(
-          `Kuota maksimal ${DAILY_QUOTA} nomor untuk tanggal ${letterDate} sudah terpenuhi.`,
+          `Batas transaksi harian untuk tanggal ${letterDate} telah mencapai maksimum.`,
         );
       }
 
@@ -593,21 +593,21 @@ export async function issueOutgoingLetter(params: {
       const fullNumber = formatFullLetterNumber({
         classificationCode: cleanClass,
         sequenceNumber,
-        subNumber: 0,
+        subNumber,
         unitCode: settings.unitCode,
         month,
         year,
         settings,
       });
 
-      const sortKey = buildSortKey(letterDate, sequenceNumber);
+      const sortKey = buildSortKey(letterDate, sequenceNumber, subNumber);
 
       tx.set(letterRef, {
         year,
         month,
         letterDate,
         sequenceNumber,
-        subNumber: 0,
+        subNumber,
         sortKey,
         classificationCode: cleanClass,
         unitCode: settings.unitCode,
@@ -633,7 +633,7 @@ export async function issueOutgoingLetter(params: {
   } catch (error) {
     if (
       error instanceof Error &&
-      error.message.includes(`Kuota maksimal ${DAILY_QUOTA} nomor`)
+      error.message.includes('Batas transaksi harian')
     ) {
       throw error;
     }
